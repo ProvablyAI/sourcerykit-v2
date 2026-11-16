@@ -77,7 +77,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://provably.ai"
-Documentation = "https://provably.ai/docs"
+Documentation = "https://sourcerykit.provably.ai/docs"
 Repository = "https://github.com/ProvablyAI/sourcerykit"
 "Bug Tracker" = "https://github.com/ProvablyAI/sourcerykit/issues"
 Changelog = "https://github.com/ProvablyAI/sourcerykit/blob/main/CHANGELOG.md"

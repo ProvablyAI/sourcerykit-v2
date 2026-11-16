@@ -178,6 +178,6 @@ The agent will populate `claimed_values` with a fabricated temperature. When the
 
 **Next steps:**
 
-- [Architecture](https://provably.ai/docs/pillars/architecture) — what each piece does and how they fit together
-- [Handoff](https://provably.ai/docs/pillars/handoff) — claims and verdicts in depth
-- [Onboarding](https://provably.ai/docs/getting_started/onboarding) — first-time account, credentials, and database setup
+- [Architecture](https://sourcerykit.provably.ai/docs/pillars/architecture) — what each piece does and how they fit together
+- [Handoff](https://sourcerykit.provably.ai/docs/pillars/handoff) — claims and verdicts in depth
+- [Onboarding](https://sourcerykit.provably.ai/docs/getting_started/onboarding) — first-time account, credentials, and database setup

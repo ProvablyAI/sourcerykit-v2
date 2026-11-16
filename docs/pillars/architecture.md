@@ -14,15 +14,15 @@ SourceryKit intercepts an agent’s outbound HTTP calls, enforces endpoint polic
 
 - **Bootstrap System**: Handles one-time initialization, including database schema setup and resource registration, before the agent starts executing. See [README](https://github.com/ProvablyAI/sourcerykit).
 
-- **HTTP Interceptor**: Intercepts outbound HTTP calls to enforce policies and record payloads. Untrusted requests are blocked before leaving the process. See [interceptor](https://provably.ai/docs/pillars/interceptor).
+- **HTTP Interceptor**: Intercepts outbound HTTP calls to enforce policies and record payloads. Untrusted requests are blocked before leaving the process. See [interceptor](https://sourcerykit.provably.ai/docs/pillars/interceptor).
 
 - **Database Tables**:
-  - **Trusted Endpoints**: A registry of allowed endpoints used by the Interceptor to validate outbound requests. See [trusted-endpoints](https://provably.ai/docs/pillars/trusted-endpoints).
-  - **Intercepts**: An append-only table storing detailed records of every outbound HTTP request and response. The Provably backend uses these records to generate cryptographic proofs. See [interceptor](https://provably.ai/docs/pillars/interceptor).
+  - **Trusted Endpoints**: A registry of allowed endpoints used by the Interceptor to validate outbound requests. See [trusted-endpoints](https://sourcerykit.provably.ai/docs/pillars/trusted-endpoints).
+  - **Intercepts**: An append-only table storing detailed records of every outbound HTTP request and response. The Provably backend uses these records to generate cryptographic proofs. See [interceptor](https://sourcerykit.provably.ai/docs/pillars/interceptor).
 
-- **Handoff Payload**: A structured data format used to pass claims about external calls between agents or services. See [handoff](https://provably.ai/docs/pillars/handoff).
+- **Handoff Payload**: A structured data format used to pass claims about external calls between agents or services. See [handoff](https://sourcerykit.provably.ai/docs/pillars/handoff).
 
-- **Evaluator**: Compares agent claims against authoritative records from the Provably backend, returning a deterministic verdict (`PASS`, `CAUGHT`, or `ERROR`). See [handoff](https://provably.ai/docs/pillars/handoff).
+- **Evaluator**: Compares agent claims against authoritative records from the Provably backend, returning a deterministic verdict (`PASS`, `CAUGHT`, or `ERROR`). See [handoff](https://sourcerykit.provably.ai/docs/pillars/handoff).
 
 - **Provably Backend**: The external service acting as the single source of truth for verifying agent claims by generating proofs from the Intercepts table.
 
@@ -30,8 +30,8 @@ SourceryKit intercepts an agent’s outbound HTTP calls, enforces endpoint polic
 
 **Next steps:**
 
-- [Onboarding](https://provably.ai/docs/getting_started/onboarding) — one-time account, credentials, and database setup
-- [End-to-End Walkthrough](https://provably.ai/docs/getting_started/end-to-end-walkthrough) — run the whole flow in code
-- [Interceptor](https://provably.ai/docs/pillars/interceptor) — how outbound HTTP calls are captured and recorded
-- [Handoff](https://provably.ai/docs/pillars/handoff) — building claims and reading the verdict
-- [Trusted Endpoints](https://provably.ai/docs/pillars/trusted-endpoints) — the outbound allow-list
+- [Onboarding](https://sourcerykit.provably.ai/docs/getting_started/onboarding) — one-time account, credentials, and database setup
+- [End-to-End Walkthrough](https://sourcerykit.provably.ai/docs/getting_started/end-to-end-walkthrough) — run the whole flow in code
+- [Interceptor](https://sourcerykit.provably.ai/docs/pillars/interceptor) — how outbound HTTP calls are captured and recorded
+- [Handoff](https://sourcerykit.provably.ai/docs/pillars/handoff) — building claims and reading the verdict
+- [Trusted Endpoints](https://sourcerykit.provably.ai/docs/pillars/trusted-endpoints) — the outbound allow-list

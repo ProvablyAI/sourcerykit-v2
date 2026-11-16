@@ -145,7 +145,7 @@ export SOURCERYKIT_POSTGRES_URL="postgresql://user:password@host:5432/db"
 > [!NOTE]
 > `SOURCERYKIT_POSTGRES_URL` is set automatically when using a sandbox. Only set it manually if you're using your own database.
 
-For a full list of CLI commands, check out the [CLI Documentation](https://provably.ai/docs/getting_started/cli) file, or simply run:
+For a full list of CLI commands, check out the [CLI Documentation](https://sourcerykit.provably.ai/docs/getting_started/cli) file, or simply run:
 ```bash
 sourcerykit --help
 ```
@@ -156,15 +156,15 @@ For a full list of environment variables, see [.env.example](https://github.com/
 ## More Docs
 Want to dig into the details? Check out our documentation and specific guides:
 
-* **Official Documentation:** Visit [provably.ai/docs](https://provably.ai/docs) for the complete reference.
-* [End-to-End Walkthrough](https://provably.ai/docs/getting_started/end-to-end-walkthrough) — Get up and running from scratch.
+* **Official Documentation:** Visit [provably.ai/docs](https://sourcerykit.provably.ai/docs) for the complete reference.
+* [End-to-End Walkthrough](https://sourcerykit.provably.ai/docs/getting_started/end-to-end-walkthrough) — Get up and running from scratch.
 * [Cookbooks & Examples](https://github.com/ProvablyAI/sourcerykit/tree/main/cookbooks) — Practical recipes and code samples.
 
 ### Technical Guides
-- [Architecture Overview](https://provably.ai/docs/pillars/architecture)
-- [HTTP Interception](https://provably.ai/docs/pillars/interceptor)
-- [Managing Trusted Endpoints](https://provably.ai/docs/pillars/trusted-endpoints)
-- [Handoff Contracts & Evaluation](https://provably.ai/docs/pillars/handoff)
+- [Architecture Overview](https://sourcerykit.provably.ai/docs/pillars/architecture)
+- [HTTP Interception](https://sourcerykit.provably.ai/docs/pillars/interceptor)
+- [Managing Trusted Endpoints](https://sourcerykit.provably.ai/docs/pillars/trusted-endpoints)
+- [Handoff Contracts & Evaluation](https://sourcerykit.provably.ai/docs/pillars/handoff)
 
 
 ## Contributing

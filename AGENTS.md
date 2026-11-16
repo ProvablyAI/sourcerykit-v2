@@ -14,20 +14,20 @@ agent's claims against what those calls actually returned, so a hallucinated val
 > **Setup is scriptable — prefer the `sourcerykit init` CLI over hand-writing config.**
 > Exactly one step needs a human: completing the browser OAuth login (new accounts are
 > created on the Provably web app during that login). Full steps:
-> [docs/onboarding.md](docs/onboarding.md).
+> [onboarding.md](docs/getting_started/onboarding.md).
 
 ## Where to go next
 
 | Your situation | Do this |
 |---|---|
-| First time — no Provably credentials yet | Run the `sourcerykit init` setup (see the note above) → [docs/onboarding.md](docs/onboarding.md). |
+| First time — no Provably credentials yet | Run the `sourcerykit init` setup (see the note above) → [onboarding.md](docs/getting_started/onboarding.md). |
 | Integrating SourceryKit into an agent | Open the closest cookbook ([below](#cookbooks-runnable-examples)), mirror it, then swap in your own tool and claims. |
-| Want to see one full run first | [docs/example.md](docs/example.md) — end-to-end walkthrough. |
-| Got an unexpected `CAUGHT` or `ERROR` | Read [the outcomes below](#the-flow-at-a-glance), then [docs/handoff.md](docs/handoff.md). |
-| Need a signature, type, or CLI flag | [docs/src/api.md](docs/src/api.md) · [docs/cli.md](docs/cli.md) |
-| Record or inspect outbound HTTP calls | [docs/intercept.md](docs/intercept.md) |
-| Allow-list outbound endpoints | [docs/trusted-endpoints.md](docs/trusted-endpoints.md) |
-| Understand how the pieces fit | [docs/architecture.md](docs/architecture.md) |
+| Want to see one full run first | [end-to-end-walkthrough.md](docs/getting_started/end-to-end-walkthrough.md). |
+| Got an unexpected `CAUGHT` or `ERROR` | Read [the outcomes below](#the-flow-at-a-glance), then [handoff.md](docs/pillars/handoff.md). |
+| Need a signature, type, or CLI flag | [public API](src/sourcerykit/__init__.py) · [handoff fields](docs/pillars/handoff.md) · [cli.md](docs/getting_started/cli.md) |
+| Record or inspect outbound HTTP calls | [interceptor.md](docs/pillars/interceptor.md) |
+| Allow-list outbound endpoints | [trusted-endpoints.md](docs/pillars/trusted-endpoints.md) |
+| Understand how the pieces fit | [architecture.md](docs/pillars/architecture.md) |
 | Migrate from the old `provably` SDK | [docs/migrations/v1_0/v1_0.md](docs/migrations/v1_0/v1_0.md) |
 
 **Cookbooks are the ground truth — mirror one, never hand-roll the claim.** Everything else
