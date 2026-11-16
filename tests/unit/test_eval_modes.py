@@ -230,3 +230,47 @@ class TestEvaluateClaimRangeThreshold:
         claim = _rt_claim(claimed_value=99, range_min=0, range_max=100)
         result = evaluate_claim(claim, {"value": 50})
         assert result["result"] == "CAUGHT"
+
+
+class TestEvaluateClaimRangeThresholdClaimedValues:
+    """range_threshold fed the agent's claimed_values list, as build_handoff_payload passes it."""
+
+    _RESPONSE = {"current": {"temperature_2m": 14.1}, "hourly": {"t": [10, 20, 30]}}
+
+    def _claim(self, entries: list[Any], **bounds: Any) -> HandoffClaim:
+        return _rt_claim(json_path="", claimed_value=entries, **bounds)
+
+    def test_passes_with_claimed_value_model_in_range(self) -> None:
+        entry = ClaimedValue(path="$.current.temperature_2m", value="14.1", sourcerykit_ref="r")
+        result = evaluate_claim(self._claim([entry], range_min=0, range_max=40), self._RESPONSE)
+        assert result["result"] == "PASS"
+
+    def test_passes_with_dict_entry_and_list_average(self) -> None:
+        entry = {"path": "$.hourly.t", "value": "20", "sourcerykit_ref": "r"}
+        result = evaluate_claim(self._claim([entry], range_min=0, range_max=40), self._RESPONSE)
+        assert result["result"] == "PASS"
+
+    def test_caught_when_out_of_range(self) -> None:
+        entry = ClaimedValue(path="$.current.temperature_2m", value="14.1", sourcerykit_ref="r")
+        result = evaluate_claim(self._claim([entry], range_min=20), self._RESPONSE)
+        assert result["result"] == "CAUGHT"
+
+    def test_caught_when_claimed_value_differs(self) -> None:
+        entry = ClaimedValue(path="$.current.temperature_2m", value="18", sourcerykit_ref="r")
+        result = evaluate_claim(self._claim([entry], range_min=0, range_max=40), self._RESPONSE)
+        assert result["result"] == "CAUGHT"
+
+    def test_caught_when_any_entry_fails(self) -> None:
+        ok = ClaimedValue(path="$.current.temperature_2m", value="14.1", sourcerykit_ref="r")
+        bad = ClaimedValue(path="$.hourly.t", value="25", sourcerykit_ref="r")
+        result = evaluate_claim(self._claim([ok, bad], range_min=0, range_max=40), self._RESPONSE)
+        assert result["result"] == "CAUGHT"
+
+    def test_caught_when_path_missing(self) -> None:
+        entry = ClaimedValue(path="$.current.nope", value="14.1", sourcerykit_ref="r")
+        result = evaluate_claim(self._claim([entry], range_min=0, range_max=40), self._RESPONSE)
+        assert result["result"] == "CAUGHT"
+
+    def test_caught_when_empty(self) -> None:
+        result = evaluate_claim(self._claim([], range_min=0, range_max=40), self._RESPONSE)
+        assert result["result"] == "CAUGHT"

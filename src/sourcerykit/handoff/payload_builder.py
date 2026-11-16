@@ -194,8 +194,6 @@ async def _resolve_claim(
     except ValueError:
         verification_mode = VerificationMode.FIELD_EXTRACTION
 
-    schema = raw.get("expected_json_schema") if isinstance(raw.get("expected_json_schema"), dict) else None
-
     claimed_value = raw.get("claimed_value")
 
     # insert trace_intercept
@@ -220,7 +218,6 @@ async def _resolve_claim(
         query_id=qid,
         verification_mode=verification_mode,
         json_path=str(raw.get("json_path") or ""),
-        expected_json_schema=schema,
         range_min=raw.get("range_min"),
         range_max=raw.get("range_max"),
     )

@@ -47,10 +47,6 @@ class HandoffClaim(BaseModel):
             "style '$.userId' / '$.' (empty or '$' = full payload)."
         ),
     )
-    expected_json_schema: dict[str, Any] | None = Field(
-        default=None,
-        description="JSON Schema applied at json_path; required for verification_mode='schema_type'.",
-    )
     range_min: float | int | None = Field(
         default=None,
         description="Inclusive lower bound for verification_mode='range_threshold'.",

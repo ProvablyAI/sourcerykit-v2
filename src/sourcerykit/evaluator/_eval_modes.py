@@ -85,38 +85,61 @@ def evaluate_claim(claim: HandoffClaim, row_response: Any) -> dict[str, Any]:
                     "detail": "range_threshold requires range_min and/or range_max",
                 }
 
-            if isinstance(at_path, list):
-                if not at_path:
-                    return {**base, "result": Outcome.CAUGHT, "detail": "indexed list is empty; cannot compute average"}
+            # The agent's claimed_values ({path, value} entries), or a single number at json_path.
+            if isinstance(claimed_value, list):
+                if not claimed_value:
+                    return {**base, "result": Outcome.CAUGHT, "detail": "claimed_value is empty"}
                 try:
-                    numbers = [_coerce_number(item) for item in at_path]
-                except (TypeError, ValueError) as exc:
-                    return {**base, "result": Outcome.CAUGHT, "detail": f"list element not numeric: {exc}"}
-                value = sum(numbers) / len(numbers)
-                base["indexed_average"] = str(value)
+                    targets = [
+                        (_get_by_json_path(row_response, _entry(e, "path")), _entry(e, "value")) for e in claimed_value
+                    ]
+                except (KeyError, IndexError, TypeError, ValueError) as e:
+                    return {**base, "result": Outcome.CAUGHT, "detail": f"path: {e}"}
             else:
-                try:
-                    value = _coerce_number(at_path)
-                except (TypeError, ValueError) as exc:
-                    return {**base, "result": Outcome.CAUGHT, "detail": f"indexed value not numeric: {exc}"}
+                targets = [(at_path, claimed_value)]
 
-            if claim.range_min is not None and value < float(claim.range_min):
-                return {**base, "result": Outcome.CAUGHT, "detail": f"value {value} below range_min {claim.range_min}"}
-            if claim.range_max is not None and value > float(claim.range_max):
-                return {**base, "result": Outcome.CAUGHT, "detail": f"value {value} above range_max {claim.range_max}"}
-
-            try:
-                num_match = math.isclose(_coerce_number(claimed_value), value, rel_tol=0.0, abs_tol=1e-9)
-            except (TypeError, ValueError):
-                num_match = False
-
-            if not num_match:
-                return {
-                    **base,
-                    "result": Outcome.CAUGHT,
-                    "detail": "claimed_value does not match indexed numeric at path",
-                }
+            for indexed, claimed in targets:
+                failure = _check_range(claim, indexed, claimed, base)
+                if failure is not None:
+                    return failure
             return {**base, "result": Outcome.PASS}
+
+
+def _entry(entry: Any, field: str) -> Any:
+    """Reads a field of a ClaimedValue, given as a model or as a dict."""
+    return entry[field] if isinstance(entry, dict) else getattr(entry, field)
+
+
+def _check_range(claim: HandoffClaim, indexed: Any, claimed: Any, base: dict[str, Any]) -> dict[str, Any] | None:
+    """Returns a CAUGHT verdict if the indexed value is out of range or differs from the claim, else None."""
+    if isinstance(indexed, list):
+        if not indexed:
+            return {**base, "result": Outcome.CAUGHT, "detail": "indexed list is empty; cannot compute average"}
+        try:
+            numbers = [_coerce_number(item) for item in indexed]
+        except (TypeError, ValueError) as exc:
+            return {**base, "result": Outcome.CAUGHT, "detail": f"list element not numeric: {exc}"}
+        value = sum(numbers) / len(numbers)
+        base["indexed_average"] = str(value)
+    else:
+        try:
+            value = _coerce_number(indexed)
+        except (TypeError, ValueError) as exc:
+            return {**base, "result": Outcome.CAUGHT, "detail": f"indexed value not numeric: {exc}"}
+
+    if claim.range_min is not None and value < float(claim.range_min):
+        return {**base, "result": Outcome.CAUGHT, "detail": f"value {value} below range_min {claim.range_min}"}
+    if claim.range_max is not None and value > float(claim.range_max):
+        return {**base, "result": Outcome.CAUGHT, "detail": f"value {value} above range_max {claim.range_max}"}
+
+    try:
+        num_match = math.isclose(_coerce_number(claimed), value, rel_tol=0.0, abs_tol=1e-9)
+    except (TypeError, ValueError):
+        num_match = False
+
+    if not num_match:
+        return {**base, "result": Outcome.CAUGHT, "detail": "claimed_value does not match indexed numeric at path"}
+    return None
 
 
 def _get_by_json_path(obj: Any, path: str) -> Any:
