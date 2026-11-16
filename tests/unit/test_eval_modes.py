@@ -147,13 +147,14 @@ class TestEvaluateClaimFieldExtraction:
         result = evaluate_claim(claim, row)
         assert result["result"] == "PASS"
 
-    def test_bad_json_path_raises_key_error(self) -> None:
-        """Per-entry path errors in FIELD_EXTRACTION propagate as KeyError."""
+    def test_bad_json_path_is_caught(self) -> None:
+        """A claimed path missing from the recorded response is CAUGHT, not raised."""
         claim = _fe_claim(
             claimed_value=[ClaimedValue(path="$.missing.deep.key", value="x")],
         )
-        with pytest.raises(KeyError):
-            evaluate_claim(claim, {"other": "value"})
+        result = evaluate_claim(claim, {"other": "value"})
+        assert result["result"] == "CAUGHT"
+        assert "$.missing.deep.key" in result["detail"]
 
     def test_base_contains_action_name(self) -> None:
         claim = _fe_claim(action_name="my_action")
@@ -273,4 +274,18 @@ class TestEvaluateClaimRangeThresholdClaimedValues:
 
     def test_caught_when_empty(self) -> None:
         result = evaluate_claim(self._claim([], range_min=0, range_max=40), self._RESPONSE)
+        assert result["result"] == "CAUGHT"
+
+
+class TestEvaluateClaimFieldExtractionBadInput:
+    """A hallucinated path or an empty claim must be CAUGHT, never crash or PASS."""
+
+    def test_caught_when_index_out_of_range(self) -> None:
+        claim = _fe_claim(claimed_value=[{"path": "$.items[5]", "value": "x", "sourcerykit_ref": "r"}])
+        result = evaluate_claim(claim, {"items": ["x"]})
+        assert result["result"] == "CAUGHT"
+
+    @pytest.mark.parametrize("claimed_value", [[], None])
+    def test_caught_when_nothing_claimed(self, claimed_value: Any) -> None:
+        result = evaluate_claim(_fe_claim(claimed_value=claimed_value), {"status": "open"})
         assert result["result"] == "CAUGHT"

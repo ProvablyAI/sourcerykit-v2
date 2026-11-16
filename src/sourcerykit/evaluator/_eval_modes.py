@@ -50,12 +50,19 @@ def evaluate_claim(claim: HandoffClaim, row_response: Any) -> dict[str, Any]:
 
     match verification_mode:
         case VerificationMode.FIELD_EXTRACTION:
+            if not isinstance(claimed_value, list) or not claimed_value:
+                return {**base, "result": Outcome.CAUGHT, "detail": "claimed_value must be a non-empty list"}
+
             is_valid = True
 
             for entry in claimed_value:
-                path = entry["path"] if isinstance(entry, dict) else entry.path
-                value = entry["value"] if isinstance(entry, dict) else entry.value
-                raw_true_value = _get_by_json_path(row_response, path)
+                path = _entry(entry, "path")
+                value = _entry(entry, "value")
+                try:
+                    raw_true_value = _get_by_json_path(row_response, path)
+                except (KeyError, IndexError, TypeError, ValueError) as e:
+                    # A claimed path that is not in the recorded response is a mismatch, not a crash.
+                    return {**base, "result": Outcome.CAUGHT, "detail": f"path {path}: {e}"}
 
                 # Use canonical JSON for arrays/dicts, str() for scalars
                 true_value: str | None
