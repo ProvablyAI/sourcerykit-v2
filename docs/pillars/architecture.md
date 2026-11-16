@@ -1,5 +1,5 @@
 # Architecture
-The SourceryKit SDK adds verifiable guardrails to Python agents by making outbound actions observable, enforceable, and auditable. Its modular architecture isolates responsibilities to ensure easy integration and security.
+The SourceryKit SDK makes Python agents' answers verifiable by recording outbound actions, enforcing endpoint policies, and checking claims against the recorded data. Its modular architecture isolates responsibilities to ensure easy integration and security.
 
 ## Core Flow
 SourceryKit intercepts an agent’s outbound HTTP calls, enforces endpoint policies, records interactions, and enables deterministic evaluation of claims.

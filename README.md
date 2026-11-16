@@ -10,7 +10,7 @@
 </div>
 
 
-SourceryKit is the Python SDK for [Provably](https://provably.ai). Agents self verify API and MCP calls against recorded source evidence and create portable proofs. SourceryKit detects 100% of covered tool calling errors and data hallucinations ([see our benchmark](https://provably.ai/blogs/The-Agent-Was-Right-The-Evidence-Wasnt)). Downstream agents and workflows use those proofs to trigger retries, repair workflows and increase accuracy.
+SourceryKit is the Python SDK for [Provably](https://provably.ai). It makes agent answers verifiable: each value an agent claims is checked against the HTTP calls it actually made, and every verdict comes with a proof that anyone can check: your team, your auditor, or the agent you hand off to. A value that doesn't match its source is `CAUGHT` before it ships ([see our benchmark](https://provably.ai/blogs/The-Agent-Was-Right-The-Evidence-Wasnt)).
 
 SourceryKit is powered by Provably's [QEDB verifiable database](https://eprint.iacr.org/2025/1408), accepted at [ACM CCS 2026](https://www.sigsac.org/ccs/CCS2026/). QEDB proves that SQL query results were computed correctly over the complete committed data, producing small, database size independent proofs averaging around 1 KB that can be proven and verified in milliseconds.
 

@@ -5,10 +5,10 @@
 > machine view of https://provably.ai. If you reached it through the landing page, the repo
 > copy is the source of truth — read it there when in doubt.
 
-SourceryKit is the Python SDK for [Provably](https://provably.ai): verifiable guardrails
-for AI agents — it records outbound HTTP calls, enforces endpoint policies, and checks an
-agent's claims against what those calls actually returned, so a hallucinated value is
-**caught** instead of shipped.
+SourceryKit is the Python SDK for [Provably](https://provably.ai): it makes agent answers
+verifiable. It records an agent's outbound HTTP calls, enforces endpoint policies, and checks
+each claimed value against what those calls actually returned, with a proof anyone can
+verify. A hallucinated value is **caught** instead of shipped.
 
 > [!IMPORTANT]
 > **Setup is scriptable — prefer the `sourcerykit init` CLI over hand-writing config.**

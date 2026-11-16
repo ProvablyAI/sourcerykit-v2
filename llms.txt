@@ -1,8 +1,8 @@
 # SourceryKit
 
-> Python SDK for Provably: verifiable guardrails for AI agents. Intercepts an
-> agent's outbound HTTP calls, enforces endpoint allow-lists, and checks the
-> agent's claimed output against the raw data actually fetched. Hallucinated or
+> Python SDK for Provably: makes AI agent answers verifiable. Records an agent's
+> outbound HTTP calls, enforces endpoint allow-lists, and checks each claimed value
+> against the data actually fetched, with a proof anyone can verify. Mismatched or
 > tampered values are CAUGHT, not shipped. Async; supports httpx, aiohttp, requests.
 
 ## Start

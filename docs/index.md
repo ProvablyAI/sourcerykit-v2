@@ -1,5 +1,5 @@
 # SourceryKit SDK
-Welcome to the developer documentation for the Provably Python SDK (**SourceryKit**). This SDK brings verifiable guardrails to autonomous Python agents, making every outbound HTTP call observable, enforceable, and auditable.
+Welcome to the developer documentation for the Provably Python SDK (**SourceryKit**). This SDK makes Python agents' answers verifiable: every outbound HTTP call is recorded, and every value the agent claims is checked against it with a proof anyone can verify.
 
 ## New to SourceryKit?
 * Start with the [README](src/main) for installation, environment configuration, and quick start concepts.

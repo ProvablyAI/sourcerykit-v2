@@ -1,5 +1,5 @@
 # Handoff
-The handoff mechanism structures agent claims—such as the result of an API call—and submits them to an evaluation service. These claims are evaluated deterministically against authoritative records to provide verifiable runtime guardrails.
+The handoff mechanism structures agent claims—such as the result of an API call—and submits them to an evaluation service. These claims are evaluated deterministically against authoritative records, so every verdict is backed by the recorded data.
 
 ## Core Flow
 - **Collect Claims**: The agent records statements about its actions alongside supporting request/response payloads.

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "sourcerykit"
 version = "1.5.0"
-description = "Counterspell for hallucinating agents. Python SDK that breaks the illusion on every tool call, API response, and MCP handoff before bad outputs propagate."
+description = "Make every agent answer verifiable. Python SDK that checks an agent's claimed values against the API calls it actually made, with a proof anyone can verify."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.12"
 license = { text = "Business Source License 1.1" }
@@ -17,8 +17,9 @@ keywords = [
     "agent",
     "ai-agents",
     "llm",
-    "guardrails",
-    "llm-security",
+    "verification",
+    "proof",
+    "audit",
     "observability",
     "hallucination",
     "handoff",
