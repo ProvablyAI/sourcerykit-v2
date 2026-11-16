@@ -1,0 +1,55 @@
+{
+  "id": "numbers-001",
+  "description": "Number and boolean formats: trailing zeros, negatives, exponents, booleans, values beyond qedb's decimal range.",
+  "calls": [
+    {
+      "call_ref": "r1",
+      "url": "https://api.quotes.example/v1/quote",
+      "response": {
+        "symbol": "ACME",
+        "price": 187.3,
+        "change_pct": -1.25,
+        "dividend_yield": 1e-05,
+        "halted": false,
+        "shares_outstanding": 123456789012345678901234567
+      }
+    }
+  ],
+  "answer": "ACME trades at 187.30, down 1.25% today, with a dividend yield of 0.00001. Trading is not halted. There are 123456789012345678901234567 shares outstanding.",
+  "claims": [
+    {
+      "text": "trades at 187.30",
+      "category": "exact",
+      "note": "Trailing zero: the same number as 187.3.",
+      "gold_verdict": "supported",
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.price", "value": "187.30"}]}
+    },
+    {
+      "text": "down 1.25%",
+      "category": "exact",
+      "gold_verdict": "supported",
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.change_pct", "value": "-1.25"}]}
+    },
+    {
+      "text": "dividend yield of 0.00001",
+      "category": "exact",
+      "note": "The response encodes it as 1e-05.",
+      "gold_verdict": "supported",
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.dividend_yield", "value": "0.00001"}]}
+    },
+    {
+      "text": "Trading is not halted",
+      "category": "exact",
+      "note": "JSON false.",
+      "gold_verdict": "supported",
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.halted", "value": "false"}]}
+    },
+    {
+      "text": "123456789012345678901234567 shares outstanding",
+      "category": "exact",
+      "note": "Above qedb's decimal range (about 10^23): must still match exactly, as text.",
+      "gold_verdict": "supported",
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.shares_outstanding", "value": "123456789012345678901234567"}]}
+    }
+  ]
+}

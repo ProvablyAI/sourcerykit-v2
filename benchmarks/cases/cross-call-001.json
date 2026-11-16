@@ -1,0 +1,45 @@
+{
+  "id": "cross-call-001",
+  "description": "Comparisons between two calls: today's and yesterday's temperature.",
+  "calls": [
+    {
+      "call_ref": "r1",
+      "url": "https://api.open-meteo.com/v1/forecast",
+      "response": {"current": {"time": "2026-11-16T10:00", "temperature_2m": 14.1}}
+    },
+    {
+      "call_ref": "r2",
+      "url": "https://archive-api.open-meteo.com/v1/archive",
+      "response": {"hourly": {"time": ["2026-11-15T10:00"], "temperature_2m": [11.2]}}
+    }
+  ],
+  "answer": "It is 14.1°C now, about 3 degrees warmer than yesterday at the same time. That makes today warmer than yesterday, by 5 degrees.",
+  "claims": [
+    {
+      "text": "It is 14.1°C now",
+      "category": "exact",
+      "gold_verdict": "supported",
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.current.temperature_2m", "value": "14.1"}]}
+    },
+    {
+      "text": "about 3 degrees warmer than yesterday",
+      "category": "cross_call",
+      "note": "14.1 - 11.2 = 2.9, within 'about'.",
+      "gold_verdict": "supported",
+      "v1_claim": null
+    },
+    {
+      "text": "today warmer than yesterday",
+      "category": "cross_call",
+      "gold_verdict": "supported",
+      "v1_claim": null
+    },
+    {
+      "text": "by 5 degrees",
+      "category": "cross_call",
+      "note": "The difference is 2.9.",
+      "gold_verdict": "contradicted",
+      "v1_claim": null
+    }
+  ]
+}

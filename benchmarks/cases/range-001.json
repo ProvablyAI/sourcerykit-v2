@@ -1,0 +1,46 @@
+{
+  "id": "range-001",
+  "description": "Range claims over a single value and over a series.",
+  "calls": [
+    {
+      "call_ref": "r1",
+      "url": "https://api.open-meteo.com/v1/forecast",
+      "response": {
+        "current": {"time": "2026-11-16T10:00", "temperature_2m": 14.1},
+        "hourly": {
+          "time": ["2026-11-16T11:00", "2026-11-16T12:00", "2026-11-16T13:00", "2026-11-16T14:00"],
+          "temperature_2m": [13.6, 13.1, 12.9, 12.2]
+        }
+      }
+    }
+  ],
+  "answer": "It is between 10 and 20°C right now, but not above 15°C. All afternoon the temperature stays between 12 and 14°C, and it never drops below 13°C.",
+  "claims": [
+    {
+      "text": "between 10 and 20°C right now",
+      "category": "range",
+      "gold_verdict": "supported",
+      "v1_claim": {"call_ref": "r1", "verification_mode": "range_threshold", "range_min": 10, "range_max": 20, "claimed_value": [{"path": "$.current.temperature_2m", "value": "14.1"}]}
+    },
+    {
+      "text": "not above 15°C",
+      "category": "range",
+      "gold_verdict": "supported",
+      "v1_claim": {"call_ref": "r1", "verification_mode": "range_threshold", "range_max": 15, "claimed_value": [{"path": "$.current.temperature_2m", "value": "14.1"}]}
+    },
+    {
+      "text": "All afternoon the temperature stays between 12 and 14°C",
+      "category": "range",
+      "note": "Every hourly value is within the range: MIN >= 12 and MAX <= 14. v1 only checks the average of a list.",
+      "gold_verdict": "supported",
+      "v1_claim": null
+    },
+    {
+      "text": "it never drops below 13°C",
+      "category": "range",
+      "note": "MIN of the hourly series is 12.2.",
+      "gold_verdict": "contradicted",
+      "v1_claim": null
+    }
+  ]
+}
