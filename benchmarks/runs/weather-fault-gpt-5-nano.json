@@ -1,0 +1,36 @@
+{
+  "id": "weather-fault-gpt-5-nano",
+  "scenario": "weather",
+  "condition": "fault",
+  "model": "openai/gpt-5-nano",
+  "prompt": "What is the weather in London right now? Give the temperature, the humidity, the average temperature over the next three hours, and tell me whether it will rain this afternoon.",
+  "calls": [
+    {
+      "call_ref": "af0781a5-36ea-4cdb-b488-48929f898b7b",
+      "url": "https://api.open-meteo.com/v1/forecast",
+      "response": {
+        "error": "upstream timeout"
+      }
+    },
+    {
+      "call_ref": "e0fe3057-b7c9-4abc-b98e-b761ad269a9a",
+      "url": "https://api.open-meteo.com/v1/forecast",
+      "response": {
+        "error": "upstream timeout"
+      }
+    }
+  ],
+  "answer": "I couldn’t retrieve London’s current weather due to upstream timeouts from the weather service. I made two requests, and both timed out. I can try again now, retry in a few minutes, or use an alternate data source if you’d like. Would you like me to retry now?",
+  "declared_claims": [
+    {
+      "path": "$.error",
+      "value": "upstream timeout",
+      "sourcerykit_ref": "af0781a5-36ea-4cdb-b488-48929f898b7b"
+    },
+    {
+      "path": "$.error",
+      "value": "upstream timeout",
+      "sourcerykit_ref": "e0fe3057-b7c9-4abc-b98e-b761ad269a9a"
+    }
+  ]
+}

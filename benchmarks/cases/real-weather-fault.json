@@ -1,0 +1,23 @@
+{
+  "id": "real-weather-fault",
+  "run": "weather-fault-gpt-5-nano",
+  "claims": [
+    {
+      "text": "upstream timeouts from the weather service",
+      "category": "exact",
+      "gold_verdict": "supported",
+      "v1_claim": {
+        "declared_ref": "af0781a5"
+      }
+    },
+    {
+      "text": "I made two requests, and both timed out",
+      "category": "cross_call",
+      "gold_verdict": "supported",
+      "note": "Two recorded calls, both errors.",
+      "v1_claim": {
+        "declared_ref": "e0fe3057"
+      }
+    }
+  ]
+}

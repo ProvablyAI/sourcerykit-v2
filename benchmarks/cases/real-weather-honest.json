@@ -1,0 +1,32 @@
+{
+  "id": "real-weather-honest",
+  "run": "weather-honest-gpt-5-nano",
+  "claims": [
+    {
+      "text": "Current temperature: 6°C",
+      "category": "exact",
+      "gold_verdict": "supported",
+      "note": "Recorded 6.0.",
+      "v1_claim": {
+        "declared_ref": "2604964d"
+      }
+    },
+    {
+      "text": "Humidity: 68%",
+      "category": "exact",
+      "gold_verdict": "supported",
+      "v1_claim": {
+        "declared_ref": "2604964d"
+      }
+    },
+    {
+      "text": "about 6.33°C",
+      "category": "aggregate",
+      "gold_verdict": "supported",
+      "note": "Average of 18:00-20:00 (5.9, 6.4, 6.7). Declared with the slice path [1:3], which v1 cannot read.",
+      "v1_claim": {
+        "declared_ref": "2604964d"
+      }
+    }
+  ]
+}

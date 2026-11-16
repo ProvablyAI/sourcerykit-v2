@@ -47,15 +47,15 @@
     },
     {
       "text": "humidity is 80% later today",
-      "category": "uncheckable",
-      "note": "No hourly humidity was fetched, so nothing in the trace supports or contradicts it.",
-      "gold_verdict": "uncheckable",
+      "category": "exact",
+      "note": "Stated as fact, but no hourly humidity was fetched: nothing in the trace supports it.",
+      "gold_verdict": "unsupported",
       "v1_claim": null
     },
     {
       "text": "It feels like a gloomy day",
-      "category": "uncheckable",
-      "note": "Opinion.",
+      "category": "opinion",
+      "note": "Opinion, not a fact: the right verdict is none.",
       "gold_verdict": "uncheckable",
       "v1_claim": null
     }
