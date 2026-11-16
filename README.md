@@ -51,68 +51,77 @@ git clone git@github.com:ProvablyAI/sourcerykit.git
 pip install -e ./sourcerykit
 ```
 
-Give your agent `SourceryKitAgentResponse` as its output type, run it inside an intercept context, then check the verdict before you trust its claims:
+Record the tool's HTTP call inside an intercept context and return its `sourcerykit_ref`, give your agent `SourceryKitAgentResponse` as its output type, then check the verdict before you trust its claims. This example uses the OpenAI Agents SDK (`pip install openai-agents`) and the free [Open-Meteo](https://open-meteo.com) API:
 
 ```python
+import asyncio
 import uuid
+
 import httpx
 import sourcerykit
-from agents import Agent, Runner
+from agents import Agent, Runner, function_tool
 from sourcerykit import SourceryKitAgentResponse
 
-async def run_verifiable_agent():
-    # 1. Fire up the system
-    await sourcerykit.bootstrap_system()
+URL = "https://api.open-meteo.com/v1/forecast"
 
-    # 2. Tell the registry which URL is allowed
-    await sourcerykit.insert_trusted_endpoint(url="https://api.example.com/data")
 
-    # 3. Make a network call inside an intercept context
-    async with sourcerykit.async_intercept_context(agent_id="demo-agent", action_name="get_data"):
+# 1. Record the tool's HTTP call and hand its ref to the agent
+@function_tool
+async def get_london_temperature() -> dict:
+    """Fetch the current temperature in London."""
+    async with sourcerykit.async_intercept_context(agent_id="demo", action_name="get_weather") as ref:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                "https://api.example.com/data",
-                params={"query": "example_parameter"}
+                URL, params={"latitude": 51.5074, "longitude": -0.1278, "current": "temperature_2m"}
             )
             response.raise_for_status()
+            return {**response.json(), "sourcerykit_ref": ref}
 
-    # 4. Run agent with SourceryKitAgentResponse as the output format
-    #    (e.g., output_type=... for OpenAI, response_format=... for LangChain, output_format=... for Claude).
-    #    The output is a structured response containing `claimed_values`.
-    prompt = "You are a helpful assistant."
+
+async def main():
+    # 2. Fire up the system and allow-list the endpoint
+    await sourcerykit.bootstrap_system()
+    await sourcerykit.insert_trusted_endpoint(url=URL)
+
+    # 3. Run the agent with SourceryKitAgentResponse as its output type
+    #    (output_type= for OpenAI Agents, response_format= for LangChain, output_format= for Claude).
+    #    Each claimed value carries the sourcerykit_ref copied from the tool's output.
     agent = Agent(
-        name="demo-agent",
-        instructions=prompt,
-        tools=[...],
-        model="model-name",
+        name="weather",
+        instructions="Call get_london_temperature, then report the current temperature.",
+        tools=[get_london_temperature],
         output_type=SourceryKitAgentResponse,
     )
+    prompt = "What is the current temperature in London?"
     result = await Runner.run(agent, prompt)
     final_output: SourceryKitAgentResponse = result.final_output
 
-    # 5. Build the handoff payload from the agent's structured output
-    payload_data = {
-        "answer": final_output.answer,
-        "claims": [
-            {
-                "action_name": "get_data",
-                "claimed_value": final_output.claimed_values,
-                "verification_mode": "field_extraction",
-            }
-        ],
-    }
-
+    # 4. Build the handoff payload from the agent's own claims
     payload = await sourcerykit.build_handoff_payload(
-        payload_data,
+        {
+            "answer": final_output.answer,
+            "claims": [
+                {
+                    "action_name": "get_weather",
+                    "claimed_value": final_output.claimed_values,
+                    "verification_mode": "field_extraction",
+                }
+            ],
+        },
         run_id=uuid.uuid4(),
         prompt=prompt,
-        intercept_agent_id="demo-agent",
+        intercept_agent_id="demo",  # must match agent_id in step 1
     )
 
-    # 6. Ask the evaluator for a verdict
-    result = await sourcerykit.evaluate_handoff(payload=payload)
-    print(f"Evaluation Outcome: {result.get('outcome')}") # PASS, CAUGHT, or ERROR
+    # 5. Ask the evaluator for a verdict
+    verdict = await sourcerykit.evaluate_handoff(payload=payload)
+    print(verdict["outcome"])  # PASS, CAUGHT, or ERROR
+
+
+asyncio.run(main())
 ```
+
+For a runnable version with a `--tamper` flag that makes the agent lie (and get `CAUGHT`), see [cookbooks/openai_agents](https://github.com/ProvablyAI/sourcerykit/tree/main/cookbooks/openai_agents).
 
 
 ## Configuration
