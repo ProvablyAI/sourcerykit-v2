@@ -52,10 +52,10 @@ The `build_handoff_payload` function accepts a structured `payload_data` diction
 
 
 ## Verification Modes
-The evaluation engine processes claims using one of four specific strategies:
+The evaluation engine processes claims using one of two strategies:
 
-- **field_extraction**: Isolates a specific element in the backend record using the `json_path` string and compares it directly to the `claimed_value`.
-- **range_threshold**: Verifies that the extracted numeric value matches the `claimed_value` and falls inclusively between defined `range_min` and `range_max` boundaries.
+- **field_extraction** (default): For each entry in `claimed_value`, reads the recorded response at the entry's `path` and compares it to the entry's `value` as a string (lists and objects are compared as canonical JSON). The claim passes only if every entry matches.
+- **range_threshold**: For each entry in `claimed_value`, reads the recorded numeric value at the entry's `path` (a list of numbers is averaged), checks that it falls inclusively between `range_min` and `range_max`, and that it equals the entry's `value`. Requires at least one of the two bounds. The claim passes only if every entry passes.
 
 
 ## Evaluation Logic
