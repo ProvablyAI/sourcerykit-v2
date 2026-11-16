@@ -1,0 +1,63 @@
+{
+  "id": "weather-001",
+  "description": "Open-Meteo current conditions and hourly forecast for London.",
+  "calls": [
+    {
+      "call_ref": "r1",
+      "url": "https://api.open-meteo.com/v1/forecast",
+      "response": {
+        "latitude": 51.5,
+        "longitude": -0.12,
+        "current_units": {"temperature_2m": "°C", "relative_humidity_2m": "%", "weather_code": "wmo code"},
+        "current": {"time": "2026-11-16T10:00", "temperature_2m": 14.1, "relative_humidity_2m": 71, "weather_code": 3},
+        "hourly": {
+          "time": ["2026-11-16T11:00", "2026-11-16T12:00", "2026-11-16T13:00", "2026-11-16T14:00", "2026-11-16T15:00", "2026-11-16T16:00"],
+          "temperature_2m": [13.6, 13.1, 12.9, 12.2, 11.8, 11.0]
+        }
+      }
+    }
+  ],
+  "answer": "London is currently 14°C (14.1°C exactly) with humidity at 71%. Over the next three hours temperatures average 13.2°C, and humidity is 80% later today. It feels like a gloomy day.",
+  "claims": [
+    {
+      "text": "14.1°C",
+      "category": "exact",
+      "gold_verdict": "supported",
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.current.temperature_2m", "value": "14.1"}]}
+    },
+    {
+      "text": "14°C",
+      "category": "exact",
+      "note": "Rounded value: supported, but v1 compares strings exactly.",
+      "gold_verdict": "supported",
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.current.temperature_2m", "value": "14"}]}
+    },
+    {
+      "text": "humidity at 71%",
+      "category": "exact",
+      "gold_verdict": "supported",
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.current.relative_humidity_2m", "value": "71"}]}
+    },
+    {
+      "text": "Over the next three hours temperatures average 13.2°C",
+      "category": "aggregate",
+      "note": "Average of the first 3 hourly values; v1 can only average the whole series.",
+      "gold_verdict": "supported",
+      "v1_claim": null
+    },
+    {
+      "text": "humidity is 80% later today",
+      "category": "uncheckable",
+      "note": "No hourly humidity was fetched, so nothing in the trace supports or contradicts it.",
+      "gold_verdict": "uncheckable",
+      "v1_claim": null
+    },
+    {
+      "text": "It feels like a gloomy day",
+      "category": "uncheckable",
+      "note": "Opinion.",
+      "gold_verdict": "uncheckable",
+      "v1_claim": null
+    }
+  ]
+}
