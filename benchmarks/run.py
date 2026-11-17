@@ -33,10 +33,8 @@ GOLD = {"supported", "contradicted", "unsupported", "uncheckable"}
 BAD = {"contradicted", "unsupported"}  # claims a verifier must flag
 COLUMNS = ("correct", "false_pass", "false_caught", "missed", "abstained")
 DATABASE_URL = os.environ.get("BENCH_DATABASE_URL", "postgresql://postgres:bench@localhost:55432/postgres")
-FACTS_TABLE = """CREATE TABLE IF NOT EXISTS facts (
-    call_ref uuid NOT NULL, path text NOT NULL, pattern text NOT NULL, idx integer, obj text,
-    type text NOT NULL, num numeric, text text
-)"""
+FACTS_COLUMNS = """call_ref uuid NOT NULL, path text NOT NULL, pattern text NOT NULL, idx integer, obj text,
+    type text NOT NULL, num numeric, text text"""
 
 Verdicts = Iterator[tuple[dict[str, Any], dict[str, Any], str | None]]
 
@@ -120,25 +118,30 @@ def v1_verdicts(cases: list[dict[str, Any]]) -> Verdicts:
 def v2_verdicts(cases: list[dict[str, Any]]) -> Verdicts:
     """Each case's responses go into the facts table, then each claim's queries run on it."""
     with psycopg.connect(DATABASE_URL, autocommit=True) as db:
-        db.execute(FACTS_TABLE)
 
         def query(sql: str) -> list[Any]:
             return [row[0] for row in db.execute(sql)]
 
         for case in cases:
-            db.execute("TRUNCATE facts")
-            for call in case["calls"]:
-                rows = flatten(_call_uuid(call["call_ref"]), json.dumps(call["response"]))
-                assert rows is not None, f"{case['id']}: {call['call_ref']} has no facts"
-                with db.cursor() as cursor:
-                    cursor.executemany(
-                        "INSERT INTO facts VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-                        [(r.call_ref, r.path, r.pattern, r.idx, r.obj, r.type, r.num, r.text) for r in rows],
-                    )
+            load_facts(db, case)
             for claim in case["claims"]:
                 spec = claim.get("v2_claim")
                 verdict = None if spec is None else verify(spec, query)[0]
                 yield case, claim, "contradicted" if verdict == "unsupported" else verdict  # both are CAUGHT
+
+
+def load_facts(db: psycopg.Connection[Any], case: dict[str, Any], table: str = "facts") -> None:
+    """Replaces ``table`` with the facts of the case's responses."""
+    db.execute(f"DROP TABLE IF EXISTS {table}")
+    db.execute(f"CREATE TABLE {table} ({FACTS_COLUMNS})")
+    for call in case["calls"]:
+        rows = flatten(_call_uuid(call["call_ref"]), json.dumps(call["response"]))
+        assert rows is not None, f"{case['id']}: {call['call_ref']} has no facts"
+        with db.cursor() as cursor:
+            cursor.executemany(
+                f"INSERT INTO {table} VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                [(r.call_ref, r.path, r.pattern, r.idx, r.obj, r.type, r.num, r.text) for r in rows],
+            )
 
 
 ENGINES = {"v1": v1_verdicts, "v2": v2_verdicts}
