@@ -6,7 +6,9 @@
       "call_ref": "r1",
       "url": "https://api.open-meteo.com/v1/forecast",
       "response": {
+        "current_units": {"temperature_2m": "°C"},
         "current": {"time": "2026-11-16T10:00", "temperature_2m": 14.1},
+        "hourly_units": {"temperature_2m": "°C"},
         "hourly": {
           "time": ["2026-11-16T11:00", "2026-11-16T12:00", "2026-11-16T13:00", "2026-11-16T14:00"],
           "temperature_2m": [13.6, 13.1, 12.9, 12.2]
@@ -20,27 +22,58 @@
       "text": "between 10 and 20°C right now",
       "category": "range",
       "gold_verdict": "supported",
-      "v1_claim": {"call_ref": "r1", "verification_mode": "range_threshold", "range_min": 10, "range_max": 20, "claimed_value": [{"path": "$.current.temperature_2m", "value": "14.1"}]}
+      "v1_claim": {"call_ref": "r1", "verification_mode": "range_threshold", "range_min": 10, "range_max": 20, "claimed_value": [{"path": "$.current.temperature_2m", "value": "14.1"}]},
+      "v2_claim": {
+        "steps": {
+          "t": {"call": "r1", "select": "text", "where": {"path": "$.current.temperature_2m"}},
+          "u": {"call": "r1", "select": "text", "where": {"path": "$.current_units.temperature_2m"}}
+        },
+        "checks": [{"expr": "t", "op": "between", "value": [10, 20]}, {"expr": "u", "op": "=", "value": "°C"}]
+      }
     },
     {
       "text": "not above 15°C",
       "category": "range",
       "gold_verdict": "supported",
-      "v1_claim": {"call_ref": "r1", "verification_mode": "range_threshold", "range_max": 15, "claimed_value": [{"path": "$.current.temperature_2m", "value": "14.1"}]}
+      "v1_claim": {"call_ref": "r1", "verification_mode": "range_threshold", "range_max": 15, "claimed_value": [{"path": "$.current.temperature_2m", "value": "14.1"}]},
+      "v2_claim": {
+        "steps": {
+          "t": {"call": "r1", "select": "text", "where": {"path": "$.current.temperature_2m"}},
+          "u": {"call": "r1", "select": "text", "where": {"path": "$.current_units.temperature_2m"}}
+        },
+        "checks": [{"expr": "t", "op": "<=", "value": 15}, {"expr": "u", "op": "=", "value": "°C"}]
+      }
     },
     {
       "text": "All afternoon the temperature stays between 12 and 14°C",
       "category": "range",
       "note": "Every hourly value is within the range: MIN >= 12 and MAX <= 14. v1 only checks the average of a list.",
       "gold_verdict": "supported",
-      "v1_claim": null
+      "v1_claim": null,
+      "v2_claim": {
+        "steps": {
+          "hours": {"call": "r1", "select": "idx", "where": {"pattern": "$.hourly.time[*]", "text": {"in": ["2026-11-16T12:00", "2026-11-16T13:00", "2026-11-16T14:00"]}}},
+          "low": {"call": "r1", "select": "min", "where": {"pattern": "$.hourly.temperature_2m[*]", "idx": {"in": {"step": "hours"}}}},
+          "high": {"call": "r1", "select": "max", "where": {"pattern": "$.hourly.temperature_2m[*]", "idx": {"in": {"step": "hours"}}}},
+          "u": {"call": "r1", "select": "text", "where": {"path": "$.hourly_units.temperature_2m"}}
+        },
+        "checks": [{"expr": "low", "op": ">=", "value": 12}, {"expr": "high", "op": "<=", "value": 14}, {"expr": "u", "op": "=", "value": "°C"}]
+      }
     },
     {
       "text": "it never drops below 13°C",
       "category": "range",
       "note": "MIN of the hourly series is 12.2.",
       "gold_verdict": "contradicted",
-      "v1_claim": null
+      "v1_claim": null,
+      "v2_claim": {
+        "steps": {
+          "hours": {"call": "r1", "select": "idx", "where": {"pattern": "$.hourly.time[*]", "text": {"in": ["2026-11-16T12:00", "2026-11-16T13:00", "2026-11-16T14:00"]}}},
+          "low": {"call": "r1", "select": "min", "where": {"pattern": "$.hourly.temperature_2m[*]", "idx": {"in": {"step": "hours"}}}},
+          "u": {"call": "r1", "select": "text", "where": {"path": "$.hourly_units.temperature_2m"}}
+        },
+        "checks": [{"expr": "low", "op": ">=", "value": 13}, {"expr": "u", "op": "=", "value": "°C"}]
+      }
     }
   ]
 }

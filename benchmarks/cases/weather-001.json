@@ -9,6 +9,7 @@
         "latitude": 51.5,
         "longitude": -0.12,
         "current_units": {"temperature_2m": "°C", "relative_humidity_2m": "%", "weather_code": "wmo code"},
+        "hourly_units": {"temperature_2m": "°C"},
         "current": {"time": "2026-11-16T10:00", "temperature_2m": 14.1, "relative_humidity_2m": 71, "weather_code": 3},
         "hourly": {
           "time": ["2026-11-16T11:00", "2026-11-16T12:00", "2026-11-16T13:00", "2026-11-16T14:00", "2026-11-16T15:00", "2026-11-16T16:00"],
@@ -23,41 +24,72 @@
       "text": "14.1°C",
       "category": "exact",
       "gold_verdict": "supported",
-      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.current.temperature_2m", "value": "14.1"}]}
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.current.temperature_2m", "value": "14.1"}]},
+      "v2_claim": {
+        "steps": {
+          "t": {"call": "r1", "select": "text", "where": {"path": "$.current.temperature_2m"}},
+          "u": {"call": "r1", "select": "text", "where": {"path": "$.current_units.temperature_2m"}}
+        },
+        "checks": [{"expr": "t", "op": "=", "value": 14.1}, {"expr": "u", "op": "=", "value": "°C"}]
+      }
     },
     {
       "text": "14°C",
       "category": "exact",
       "note": "Rounded value: supported, but v1 compares strings exactly.",
       "gold_verdict": "supported",
-      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.current.temperature_2m", "value": "14"}]}
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.current.temperature_2m", "value": "14"}]},
+      "v2_claim": {
+        "steps": {
+          "t": {"call": "r1", "select": "text", "where": {"path": "$.current.temperature_2m"}},
+          "u": {"call": "r1", "select": "text", "where": {"path": "$.current_units.temperature_2m"}}
+        },
+        "checks": [{"expr": "t", "op": "approx", "value": 14, "tol": 0.5}, {"expr": "u", "op": "=", "value": "°C"}]
+      }
     },
     {
       "text": "humidity at 71%",
       "category": "exact",
       "gold_verdict": "supported",
-      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.current.relative_humidity_2m", "value": "71"}]}
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.current.relative_humidity_2m", "value": "71"}]},
+      "v2_claim": {
+        "steps": {
+          "h": {"call": "r1", "select": "text", "where": {"path": "$.current.relative_humidity_2m"}},
+          "u": {"call": "r1", "select": "text", "where": {"path": "$.current_units.relative_humidity_2m"}}
+        },
+        "checks": [{"expr": "h", "op": "=", "value": 71}, {"expr": "u", "op": "=", "value": "%"}]
+      }
     },
     {
       "text": "Over the next three hours temperatures average 13.2°C",
       "category": "aggregate",
       "note": "Average of the first 3 hourly values; v1 can only average the whole series.",
       "gold_verdict": "supported",
-      "v1_claim": null
+      "v1_claim": null,
+      "v2_claim": {
+        "steps": {
+          "hours": {"call": "r1", "select": "idx", "where": {"pattern": "$.hourly.time[*]", "text": {"in": ["2026-11-16T11:00", "2026-11-16T12:00", "2026-11-16T13:00"]}}},
+          "mean": {"call": "r1", "select": "avg", "where": {"pattern": "$.hourly.temperature_2m[*]", "idx": {"in": {"step": "hours"}}}},
+          "u": {"call": "r1", "select": "text", "where": {"path": "$.hourly_units.temperature_2m"}}
+        },
+        "checks": [{"expr": "mean", "op": "approx", "value": 13.2, "tol": 0.05}, {"expr": "u", "op": "=", "value": "°C"}]
+      }
     },
     {
       "text": "humidity is 80% later today",
       "category": "exact",
       "note": "Stated as fact, but no hourly humidity was fetched: nothing in the trace supports it.",
       "gold_verdict": "unsupported",
-      "v1_claim": null
+      "v1_claim": null,
+      "v2_claim": {"unsupported": "no hourly humidity was fetched"}
     },
     {
       "text": "It feels like a gloomy day",
       "category": "opinion",
       "note": "Opinion, not a fact: the right verdict is none.",
       "gold_verdict": "uncheckable",
-      "v1_claim": null
+      "v1_claim": null,
+      "v2_claim": null
     }
   ]
 }

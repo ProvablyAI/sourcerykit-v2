@@ -4,23 +4,41 @@ Runs every case in benchmarks/cases/ offline against an engine and compares its
 verdict with the hand-labelled gold verdict. No network, no LLM, no backend: the
 recorded responses are frozen in the case files (or in the agent run they point to).
 
-    uv run python benchmarks/run.py
+    uv run python benchmarks/run.py          # both engines
+    uv run python benchmarks/run.py v1       # v1 only, no database needed
+
+The v2 engine runs its queries on a PostgreSQL facts table, by default a local one:
+
+    docker run -d --name sourcerykit-bench -e POSTGRES_PASSWORD=bench -p 55432:5432 postgres:17
 """
 
 import json
+import os
 import sys
 import uuid
 from collections import Counter, defaultdict
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import psycopg
+
+from sourcerykit.claims import Claim, verify
 from sourcerykit.evaluator._eval_modes import evaluate_claim
+from sourcerykit.facts import flatten
 from sourcerykit.schemas import HandoffClaim, VerificationMode
 
 BENCH_DIR = Path(__file__).parent
 GOLD = {"supported", "contradicted", "unsupported", "uncheckable"}
 BAD = {"contradicted", "unsupported"}  # claims a verifier must flag
 COLUMNS = ("correct", "false_pass", "false_caught", "missed", "abstained")
+DATABASE_URL = os.environ.get("BENCH_DATABASE_URL", "postgresql://postgres:bench@localhost:55432/postgres")
+FACTS_TABLE = """CREATE TABLE IF NOT EXISTS facts (
+    call_ref uuid NOT NULL, path text NOT NULL, pattern text NOT NULL, idx integer, obj text,
+    type text NOT NULL, num numeric, text text
+)"""
+
+Verdicts = Iterator[tuple[dict[str, Any], dict[str, Any], str | None]]
 
 
 def load_cases() -> list[dict[str, Any]]:
@@ -37,12 +55,29 @@ def load_cases() -> list[dict[str, Any]]:
             if v1 is not None and "declared_ref" in v1:
                 v1.update(_declared_group(case, v1["declared_ref"]))
             assert v1 is None or v1["call_ref"] in refs, f"{where} points to an unknown call_ref"
+            v2 = claim.get("v2_claim")
+            if v2 is not None:
+                for step in v2.get("steps", {}).values():
+                    calls = step["call"] if isinstance(step["call"], list) else [step["call"]]
+                    step["call"] = [str(_call_uuid(_call_ref(case, call))) for call in calls]
+                claim["v2_claim"] = Claim.model_validate({"text": claim["text"], **v2})
     return cases
+
+
+def _call_ref(case: dict[str, Any], prefix: str) -> str:
+    """The one call_ref of the case starting with ``prefix`` (real runs have long UUIDs)."""
+    (call_ref,) = [c["call_ref"] for c in case["calls"] if c["call_ref"].startswith(prefix)]
+    return str(call_ref)
+
+
+def _call_uuid(call_ref: str) -> uuid.UUID:
+    """Hand-written cases name calls r1, r2...: the facts table needs a UUID."""
+    return uuid.uuid5(uuid.NAMESPACE_URL, call_ref)
 
 
 def _declared_group(case: dict[str, Any], ref_prefix: str) -> dict[str, Any]:
     """v1 checks all values the agent declared for one call together, as build_handoff_payload groups them."""
-    (call_ref,) = [c["call_ref"] for c in case["calls"] if c["call_ref"].startswith(ref_prefix)]
+    call_ref = _call_ref(case, ref_prefix)
     group = [d for d in case["declared_claims"] if d["sourcerykit_ref"] == call_ref]
     return {"call_ref": call_ref, "verification_mode": "field_extraction", "claimed_value": group}
 
@@ -75,27 +110,64 @@ def score(gold: str, verdict: str | None) -> str:
     return {None: "correct", "supported": "false_pass", "contradicted": "false_caught"}[verdict]
 
 
-def main() -> int:
-    cases = load_cases()
-    by_category: dict[str, Counter[str]] = defaultdict(Counter)
-    problems: list[str] = []
-
+def v1_verdicts(cases: list[dict[str, Any]]) -> Verdicts:
     for case in cases:
         responses = {c["call_ref"]: c["response"] for c in case["calls"]}
         for claim in case["claims"]:
-            result = score(claim["gold_verdict"], run_v1(claim, responses))
-            by_category[claim["category"]][result] += 1
-            if result != "correct":
-                problems.append(f"  {result.upper():13} {case['id']}: {claim['text']!r}  ({claim.get('note', '')})")
+            yield case, claim, run_v1(claim, responses)
+
+
+def v2_verdicts(cases: list[dict[str, Any]]) -> Verdicts:
+    """Each case's responses go into the facts table, then each claim's queries run on it."""
+    with psycopg.connect(DATABASE_URL, autocommit=True) as db:
+        db.execute(FACTS_TABLE)
+
+        def query(sql: str) -> list[Any]:
+            return [row[0] for row in db.execute(sql)]
+
+        for case in cases:
+            db.execute("TRUNCATE facts")
+            for call in case["calls"]:
+                rows = flatten(_call_uuid(call["call_ref"]), json.dumps(call["response"]))
+                assert rows is not None, f"{case['id']}: {call['call_ref']} has no facts"
+                with db.cursor() as cursor:
+                    cursor.executemany(
+                        "INSERT INTO facts VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                        [(r.call_ref, r.path, r.pattern, r.idx, r.obj, r.type, r.num, r.text) for r in rows],
+                    )
+            for claim in case["claims"]:
+                spec = claim.get("v2_claim")
+                verdict = None if spec is None else verify(spec, query)[0]
+                yield case, claim, "contradicted" if verdict == "unsupported" else verdict  # both are CAUGHT
+
+
+ENGINES = {"v1": v1_verdicts, "v2": v2_verdicts}
+
+
+def report(engine: str, cases: list[dict[str, Any]], verdicts: Verdicts) -> None:
+    by_category: dict[str, Counter[str]] = defaultdict(Counter)
+    problems: list[str] = []
+    for case, claim, verdict in verdicts:
+        result = score(claim["gold_verdict"], verdict)
+        by_category[claim["category"]][result] += 1
+        if result != "correct":
+            problems.append(f"  {result.upper():13} {case['id']}: {claim['text']!r}  ({claim.get('note', '')})")
 
     total: Counter[str] = sum(by_category.values(), Counter())
-    print(f"engine: v1   cases: {len(cases)}   claims: {total.total()}\n")
+    print(f"engine: {engine}   cases: {len(cases)}   claims: {total.total()}\n")
     print(f"{'category':14}" + "".join(f"{c:>14}" for c in COLUMNS))
     for name, counts in sorted(by_category.items()) + [("TOTAL", total)]:
         print(f"{name:14}" + "".join(f"{counts[c]:>14}" for c in COLUMNS))
     if problems:
         print("\nnot correct:")
         print("\n".join(problems))
+
+
+def main() -> int:
+    cases = load_cases()
+    for engine in sys.argv[1:] or list(ENGINES):
+        report(engine, cases, ENGINES[engine](cases))
+        print()
     return 0
 
 

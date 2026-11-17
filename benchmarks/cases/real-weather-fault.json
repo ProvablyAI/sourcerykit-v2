@@ -6,8 +6,12 @@
       "text": "upstream timeouts from the weather service",
       "category": "exact",
       "gold_verdict": "supported",
-      "v1_claim": {
-        "declared_ref": "af0781a5"
+      "v1_claim": {"declared_ref": "af0781a5"},
+      "v2_claim": {
+        "steps": {
+          "e": {"call": "af0781a5", "select": "text", "where": {"path": "$.error"}}
+        },
+        "checks": [{"expr": "e", "op": "=", "value": "upstream timeout"}]
       }
     },
     {
@@ -15,8 +19,12 @@
       "category": "cross_call",
       "gold_verdict": "supported",
       "note": "Two recorded calls, both errors.",
-      "v1_claim": {
-        "declared_ref": "e0fe3057"
+      "v1_claim": {"declared_ref": "e0fe3057"},
+      "v2_claim": {
+        "steps": {
+          "n": {"call": ["af0781a5", "e0fe3057"], "select": "count", "where": {"path": "$.error", "text": "upstream timeout"}}
+        },
+        "checks": [{"expr": "n", "op": "=", "value": 2}]
       }
     }
   ]

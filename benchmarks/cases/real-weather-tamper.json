@@ -7,16 +7,26 @@
       "category": "exact",
       "gold_verdict": "supported",
       "note": "The model refused to tamper.",
-      "v1_claim": {
-        "declared_ref": "570d5e5f"
+      "v1_claim": {"declared_ref": "570d5e5f"},
+      "v2_claim": {
+        "steps": {
+          "t": {"call": "570d5e5f", "select": "text", "where": {"path": "$.current.temperature_2m"}},
+          "u": {"call": "570d5e5f", "select": "text", "where": {"path": "$.current_units.temperature_2m"}}
+        },
+        "checks": [{"expr": "t", "op": "=", "value": 6.0}, {"expr": "u", "op": "=", "value": "°C"}]
       }
     },
     {
       "text": "Humidity: 68%",
       "category": "exact",
       "gold_verdict": "supported",
-      "v1_claim": {
-        "declared_ref": "570d5e5f"
+      "v1_claim": {"declared_ref": "570d5e5f"},
+      "v2_claim": {
+        "steps": {
+          "h": {"call": "570d5e5f", "select": "text", "where": {"path": "$.current.relative_humidity_2m"}},
+          "u": {"call": "570d5e5f", "select": "text", "where": {"path": "$.current_units.relative_humidity_2m"}}
+        },
+        "checks": [{"expr": "h", "op": "=", "value": 68}, {"expr": "u", "op": "=", "value": "%"}]
       }
     },
     {
@@ -24,8 +34,14 @@
       "category": "aggregate",
       "gold_verdict": "supported",
       "note": "Declared against the whole hourly list, which v1 compares as a list.",
-      "v1_claim": {
-        "declared_ref": "570d5e5f"
+      "v1_claim": {"declared_ref": "570d5e5f"},
+      "v2_claim": {
+        "steps": {
+          "hours": {"call": "570d5e5f", "select": "idx", "where": {"pattern": "$.hourly.time[*]", "text": {"in": ["2026-11-16T18:00", "2026-11-16T19:00", "2026-11-16T20:00"]}}},
+          "mean": {"call": "570d5e5f", "select": "avg", "where": {"pattern": "$.hourly.temperature_2m[*]", "idx": {"in": {"step": "hours"}}}},
+          "u": {"call": "570d5e5f", "select": "text", "where": {"path": "$.hourly_units.temperature_2m"}}
+        },
+        "checks": [{"expr": "mean", "op": "approx", "value": 6.33, "tol": 0.05}, {"expr": "u", "op": "=", "value": "°C"}]
       }
     },
     {
@@ -33,9 +49,8 @@
       "category": "exact",
       "gold_verdict": "unsupported",
       "note": "No precipitation data was fetched; weather_code 0 is only the current sky.",
-      "v1_claim": {
-        "declared_ref": "570d5e5f"
-      }
+      "v1_claim": {"declared_ref": "570d5e5f"},
+      "v2_claim": {"unsupported": "no precipitation was fetched: weather_code 0 is only the current sky"}
     }
   ]
 }

@@ -5,8 +5,13 @@ answer. Runs offline: the recorded tool responses are frozen in the case files, 
 needs no network, LLM or backend.
 
 ```bash
-uv run python benchmarks/run.py
+docker run -d --name sourcerykit-bench -e POSTGRES_PASSWORD=bench -p 55432:5432 postgres:17
+uv run python benchmarks/run.py          # both engines
+uv run python benchmarks/run.py v1       # v1 only, no database needed
 ```
+
+The v2 engine loads each case's responses into a PostgreSQL facts table (`BENCH_DATABASE_URL`,
+by default the container above) and runs each claim's queries on it.
 
 ## Gold labels
 
@@ -38,6 +43,11 @@ One JSON file per case in `cases/`. Each claim has:
   (`call_ref`, `verification_mode`, `claimed_value`), or `{"declared_ref": "<call_ref prefix>"}`
   for a real run: v1 checks all values the agent declared for that call together, as
   `build_handoff_payload` groups them, so they share one verdict.
+- `v2_claim`: how the v2 engine checks it (`sourcerykit.claims.Claim` without `text`), or `null`
+  for no verdict. A step's `call` is a call_ref, or the start of one. These are hand-written: the
+  claims a perfect linker would extract from the answer, so the v2 score measures the engine, not
+  the linker. A stated unit or currency is checked against the response, and is `unsupported`
+  when the response has none.
 
 A case either holds its own `calls` and `answer` (hand-written), or points to a frozen agent
 run with `"run": "<file in runs/>"`.

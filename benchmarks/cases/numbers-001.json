@@ -22,34 +22,64 @@
       "category": "exact",
       "note": "Trailing zero: the same number as 187.3.",
       "gold_verdict": "supported",
-      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.price", "value": "187.30"}]}
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.price", "value": "187.30"}]},
+      "v2_claim": {
+        "steps": {
+          "v": {"call": "r1", "select": "text", "where": {"path": "$.price"}}
+        },
+        "checks": [{"expr": "v", "op": "=", "value": 187.3}]
+      }
     },
     {
       "text": "down 1.25%",
       "category": "exact",
       "gold_verdict": "supported",
-      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.change_pct", "value": "-1.25"}]}
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.change_pct", "value": "-1.25"}]},
+      "v2_claim": {
+        "steps": {
+          "v": {"call": "r1", "select": "text", "where": {"path": "$.change_pct"}}
+        },
+        "checks": [{"expr": "v", "op": "=", "value": -1.25}]
+      }
     },
     {
       "text": "dividend yield of 0.00001",
       "category": "exact",
       "note": "The response encodes it as 1e-05.",
       "gold_verdict": "supported",
-      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.dividend_yield", "value": "0.00001"}]}
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.dividend_yield", "value": "0.00001"}]},
+      "v2_claim": {
+        "steps": {
+          "v": {"call": "r1", "select": "text", "where": {"path": "$.dividend_yield"}}
+        },
+        "checks": [{"expr": "v", "op": "=", "value": 1e-05}]
+      }
     },
     {
       "text": "Trading is not halted",
       "category": "exact",
       "note": "JSON false.",
       "gold_verdict": "supported",
-      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.halted", "value": "false"}]}
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.halted", "value": "false"}]},
+      "v2_claim": {
+        "steps": {
+          "v": {"call": "r1", "select": "text", "where": {"path": "$.halted"}}
+        },
+        "checks": [{"expr": "v", "op": "=", "value": false}]
+      }
     },
     {
       "text": "123456789012345678901234567 shares outstanding",
       "category": "exact",
       "note": "Above qedb's decimal range (about 10^23): must still match exactly, as text.",
       "gold_verdict": "supported",
-      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.shares_outstanding", "value": "123456789012345678901234567"}]}
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.shares_outstanding", "value": "123456789012345678901234567"}]},
+      "v2_claim": {
+        "steps": {
+          "v": {"call": "r1", "select": "text", "where": {"path": "$.shares_outstanding"}}
+        },
+        "checks": [{"expr": "v", "op": "=", "value": 123456789012345678901234567}]
+      }
     }
   ]
 }

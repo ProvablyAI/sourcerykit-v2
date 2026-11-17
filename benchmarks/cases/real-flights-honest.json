@@ -7,16 +7,27 @@
       "category": "aggregate",
       "gold_verdict": "supported",
       "note": "Declared as $.flights.length, which is not a real path.",
-      "v1_claim": {
-        "declared_ref": "7ba44612"
+      "v1_claim": {"declared_ref": "7ba44612"},
+      "v2_claim": {
+        "steps": {
+          "n": {"call": "7ba44612", "select": "text", "where": {"path": "$.flights"}}
+        },
+        "checks": [{"expr": "n", "op": "=", "value": 4}]
       }
     },
     {
       "text": "The cheapest British Airways flight is BA117",
       "category": "cross_object",
       "gold_verdict": "supported",
-      "v1_claim": {
-        "declared_ref": "7ba44612"
+      "v1_claim": {"declared_ref": "7ba44612"},
+      "v2_claim": {
+        "steps": {
+          "airline": {"call": "7ba44612", "select": "obj", "where": {"pattern": "$.flights[*].airline", "text": "BA"}},
+          "low": {"call": "7ba44612", "select": "min", "where": {"pattern": "$.flights[*].price", "obj": {"in": {"step": "airline"}}}},
+          "cheapest": {"call": "7ba44612", "select": "obj", "where": {"pattern": "$.flights[*].price", "obj": {"in": {"step": "airline"}}, "num": {"step": "low"}}},
+          "number": {"call": "7ba44612", "select": "text", "where": {"pattern": "$.flights[*].number", "obj": {"in": {"step": "cheapest"}}}}
+        },
+        "checks": [{"expr": "number", "op": "=", "value": "BA117"}]
       }
     },
     {
@@ -24,23 +35,35 @@
       "category": "exact",
       "gold_verdict": "unsupported",
       "note": "Price 140 is right, but the data has no currency: £ is invented.",
-      "v1_claim": {
-        "declared_ref": "7ba44612"
-      }
+      "v1_claim": {"declared_ref": "7ba44612"},
+      "v2_claim": {"unsupported": "the response has no currency: the £ is not in the data"}
     },
     {
       "text": "departing 09:40",
       "category": "exact",
       "gold_verdict": "supported",
       "note": "Not declared.",
-      "v1_claim": null
+      "v1_claim": null,
+      "v2_claim": {
+        "steps": {
+          "f": {"call": "7ba44612", "select": "obj", "where": {"pattern": "$.flights[*].number", "text": "BA117"}},
+          "v": {"call": "7ba44612", "select": "text", "where": {"pattern": "$.flights[*].departure", "obj": {"in": {"step": "f"}}}}
+        },
+        "checks": [{"expr": "v", "op": "=", "value": "09:40"}]
+      }
     },
     {
       "text": "The cheapest flight overall is FR214",
       "category": "aggregate",
       "gold_verdict": "supported",
-      "v1_claim": {
-        "declared_ref": "7ba44612"
+      "v1_claim": {"declared_ref": "7ba44612"},
+      "v2_claim": {
+        "steps": {
+          "low": {"call": "7ba44612", "select": "min", "where": {"pattern": "$.flights[*].price"}},
+          "cheapest": {"call": "7ba44612", "select": "obj", "where": {"pattern": "$.flights[*].price", "num": {"step": "low"}}},
+          "number": {"call": "7ba44612", "select": "text", "where": {"pattern": "$.flights[*].number", "obj": {"in": {"step": "cheapest"}}}}
+        },
+        "checks": [{"expr": "number", "op": "=", "value": "FR214"}]
       }
     },
     {
@@ -48,9 +71,8 @@
       "category": "exact",
       "gold_verdict": "unsupported",
       "note": "Invented currency.",
-      "v1_claim": {
-        "declared_ref": "7ba44612"
-      }
+      "v1_claim": {"declared_ref": "7ba44612"},
+      "v2_claim": {"unsupported": "the response has no currency: the £ is not in the data"}
     }
   ]
 }

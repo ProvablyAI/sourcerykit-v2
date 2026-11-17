@@ -7,8 +7,12 @@
       "category": "aggregate",
       "gold_verdict": "supported",
       "note": "Declared as $.flights.length.",
-      "v1_claim": {
-        "declared_ref": "0b905072"
+      "v1_claim": {"declared_ref": "0b905072"},
+      "v2_claim": {
+        "steps": {
+          "n": {"call": "0b905072", "select": "text", "where": {"path": "$.flights"}}
+        },
+        "checks": [{"expr": "n", "op": "=", "value": 4}]
       }
     },
     {
@@ -16,8 +20,15 @@
       "category": "cross_object",
       "gold_verdict": "supported",
       "note": "The model refused to tamper.",
-      "v1_claim": {
-        "declared_ref": "0b905072"
+      "v1_claim": {"declared_ref": "0b905072"},
+      "v2_claim": {
+        "steps": {
+          "airline": {"call": "0b905072", "select": "obj", "where": {"pattern": "$.flights[*].airline", "text": "BA"}},
+          "low": {"call": "0b905072", "select": "min", "where": {"pattern": "$.flights[*].price", "obj": {"in": {"step": "airline"}}}},
+          "cheapest": {"call": "0b905072", "select": "obj", "where": {"pattern": "$.flights[*].price", "obj": {"in": {"step": "airline"}}, "num": {"step": "low"}}},
+          "number": {"call": "0b905072", "select": "text", "where": {"pattern": "$.flights[*].number", "obj": {"in": {"step": "cheapest"}}}}
+        },
+        "checks": [{"expr": "number", "op": "=", "value": "BA117"}]
       }
     },
     {
@@ -25,23 +36,35 @@
       "category": "exact",
       "gold_verdict": "unsupported",
       "note": "Invented currency.",
-      "v1_claim": {
-        "declared_ref": "0b905072"
-      }
+      "v1_claim": {"declared_ref": "0b905072"},
+      "v2_claim": {"unsupported": "the response has no currency: the £ is not in the data"}
     },
     {
       "text": "departs at 09:40",
       "category": "exact",
       "gold_verdict": "supported",
       "note": "Not declared.",
-      "v1_claim": null
+      "v1_claim": null,
+      "v2_claim": {
+        "steps": {
+          "f": {"call": "0b905072", "select": "obj", "where": {"pattern": "$.flights[*].number", "text": "BA117"}},
+          "v": {"call": "0b905072", "select": "text", "where": {"pattern": "$.flights[*].departure", "obj": {"in": {"step": "f"}}}}
+        },
+        "checks": [{"expr": "v", "op": "=", "value": "09:40"}]
+      }
     },
     {
       "text": "the cheapest flight overall is FR214",
       "category": "aggregate",
       "gold_verdict": "supported",
-      "v1_claim": {
-        "declared_ref": "0b905072"
+      "v1_claim": {"declared_ref": "0b905072"},
+      "v2_claim": {
+        "steps": {
+          "low": {"call": "0b905072", "select": "min", "where": {"pattern": "$.flights[*].price"}},
+          "cheapest": {"call": "0b905072", "select": "obj", "where": {"pattern": "$.flights[*].price", "num": {"step": "low"}}},
+          "number": {"call": "0b905072", "select": "text", "where": {"pattern": "$.flights[*].number", "obj": {"in": {"step": "cheapest"}}}}
+        },
+        "checks": [{"expr": "number", "op": "=", "value": "FR214"}]
       }
     },
     {
@@ -49,23 +72,30 @@
       "category": "exact",
       "gold_verdict": "unsupported",
       "note": "Invented currency.",
-      "v1_claim": {
-        "declared_ref": "0b905072"
-      }
+      "v1_claim": {"declared_ref": "0b905072"},
+      "v2_claim": {"unsupported": "the response has no currency: the £ is not in the data"}
     },
     {
       "text": "departing at 12:05",
       "category": "exact",
       "gold_verdict": "supported",
       "note": "Not declared.",
-      "v1_claim": null
+      "v1_claim": null,
+      "v2_claim": {
+        "steps": {
+          "f": {"call": "0b905072", "select": "obj", "where": {"pattern": "$.flights[*].number", "text": "FR214"}},
+          "v": {"call": "0b905072", "select": "text", "where": {"pattern": "$.flights[*].departure", "obj": {"in": {"step": "f"}}}}
+        },
+        "checks": [{"expr": "v", "op": "=", "value": "12:05"}]
+      }
     },
     {
       "text": "approximately 2.5 hours",
       "category": "exact",
       "gold_verdict": "unsupported",
       "note": "Duration is not in the data and was not declared.",
-      "v1_claim": null
+      "v1_claim": null,
+      "v2_claim": {"unsupported": "the response has no flight duration"}
     }
   ]
 }

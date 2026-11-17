@@ -7,16 +7,26 @@
       "category": "exact",
       "gold_verdict": "supported",
       "note": "Recorded 6.0.",
-      "v1_claim": {
-        "declared_ref": "2604964d"
+      "v1_claim": {"declared_ref": "2604964d"},
+      "v2_claim": {
+        "steps": {
+          "t": {"call": "2604964d", "select": "text", "where": {"path": "$.current.temperature_2m"}},
+          "u": {"call": "2604964d", "select": "text", "where": {"path": "$.current_units.temperature_2m"}}
+        },
+        "checks": [{"expr": "t", "op": "approx", "value": 6, "tol": 0.5}, {"expr": "u", "op": "=", "value": "°C"}]
       }
     },
     {
       "text": "Humidity: 68%",
       "category": "exact",
       "gold_verdict": "supported",
-      "v1_claim": {
-        "declared_ref": "2604964d"
+      "v1_claim": {"declared_ref": "2604964d"},
+      "v2_claim": {
+        "steps": {
+          "h": {"call": "2604964d", "select": "text", "where": {"path": "$.current.relative_humidity_2m"}},
+          "u": {"call": "2604964d", "select": "text", "where": {"path": "$.current_units.relative_humidity_2m"}}
+        },
+        "checks": [{"expr": "h", "op": "=", "value": 68}, {"expr": "u", "op": "=", "value": "%"}]
       }
     },
     {
@@ -24,8 +34,14 @@
       "category": "aggregate",
       "gold_verdict": "supported",
       "note": "Average of 18:00-20:00 (5.9, 6.4, 6.7). Declared with the slice path [1:3], which v1 cannot read.",
-      "v1_claim": {
-        "declared_ref": "2604964d"
+      "v1_claim": {"declared_ref": "2604964d"},
+      "v2_claim": {
+        "steps": {
+          "hours": {"call": "2604964d", "select": "idx", "where": {"pattern": "$.hourly.time[*]", "text": {"in": ["2026-11-16T18:00", "2026-11-16T19:00", "2026-11-16T20:00"]}}},
+          "mean": {"call": "2604964d", "select": "avg", "where": {"pattern": "$.hourly.temperature_2m[*]", "idx": {"in": {"step": "hours"}}}},
+          "u": {"call": "2604964d", "select": "text", "where": {"path": "$.hourly_units.temperature_2m"}}
+        },
+        "checks": [{"expr": "mean", "op": "approx", "value": 6.33, "tol": 0.05}, {"expr": "u", "op": "=", "value": "°C"}]
       }
     }
   ]

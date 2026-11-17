@@ -7,6 +7,7 @@
       "url": "https://api.flights.example/v1/search",
       "response": {
         "route": {"from": "LHR", "to": "FCO", "date": "2026-11-20"},
+        "currency": "EUR",
         "flights": [
           {"number": "AZ205", "airline": "ITA", "departure": "07:15", "price": 95},
           {"number": "BA548", "airline": "BA", "departure": "08:20", "price": 180},
@@ -23,34 +24,70 @@
       "category": "aggregate",
       "note": "COUNT over the array.",
       "gold_verdict": "supported",
-      "v1_claim": null
+      "v1_claim": null,
+      "v2_claim": {
+        "steps": {
+          "n": {"call": "r1", "select": "text", "where": {"path": "$.flights"}}
+        },
+        "checks": [{"expr": "n", "op": "=", "value": 4}]
+      }
     },
     {
       "text": "BA117 departs at 09:40",
       "category": "exact",
       "gold_verdict": "supported",
-      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.flights[2].departure", "value": "09:40"}]}
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.flights[2].departure", "value": "09:40"}]},
+      "v2_claim": {
+        "steps": {
+          "f": {"call": "r1", "select": "obj", "where": {"pattern": "$.flights[*].number", "text": "BA117"}},
+          "v": {"call": "r1", "select": "text", "where": {"pattern": "$.flights[*].departure", "obj": {"in": {"step": "f"}}}}
+        },
+        "checks": [{"expr": "v", "op": "=", "value": "09:40"}]
+      }
     },
     {
       "text": "costs €99",
       "category": "exact",
       "note": "Tampered: the recorded price is 140.",
       "gold_verdict": "contradicted",
-      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.flights[2].price", "value": "99"}]}
+      "v1_claim": {"call_ref": "r1", "verification_mode": "field_extraction", "claimed_value": [{"path": "$.flights[2].price", "value": "99"}]},
+      "v2_claim": {
+        "steps": {
+          "f": {"call": "r1", "select": "obj", "where": {"pattern": "$.flights[*].number", "text": "BA117"}},
+          "v": {"call": "r1", "select": "text", "where": {"pattern": "$.flights[*].price", "obj": {"in": {"step": "f"}}}},
+          "c": {"call": "r1", "select": "text", "where": {"path": "$.currency"}}
+        },
+        "checks": [{"expr": "v", "op": "=", "value": 99}, {"expr": "c", "op": "=", "value": "EUR"}]
+      }
     },
     {
       "text": "The cheapest BA flight is €140",
       "category": "cross_object",
       "note": "MIN(price) over flights whose airline is BA.",
       "gold_verdict": "supported",
-      "v1_claim": null
+      "v1_claim": null,
+      "v2_claim": {
+        "steps": {
+          "ba": {"call": "r1", "select": "obj", "where": {"pattern": "$.flights[*].airline", "text": "BA"}},
+          "low": {"call": "r1", "select": "min", "where": {"pattern": "$.flights[*].price", "obj": {"in": {"step": "ba"}}}},
+          "c": {"call": "r1", "select": "text", "where": {"path": "$.currency"}}
+        },
+        "checks": [{"expr": "low", "op": "=", "value": 140}, {"expr": "c", "op": "=", "value": "EUR"}]
+      }
     },
     {
       "text": "the cheapest flight overall is €42",
       "category": "aggregate",
       "note": "MIN(price) over all flights; v1 range_threshold averages a list, it has no MIN.",
       "gold_verdict": "supported",
-      "v1_claim": null
+      "v1_claim": null,
+      "v2_claim": {
+        "steps": {
+          "low": {"call": "r1", "select": "min", "where": {"pattern": "$.flights[*].price"}},
+          "c": {"call": "r1", "select": "text", "where": {"path": "$.currency"}}
+        },
+        "checks": [{"expr": "low", "op": "=", "value": 42}, {"expr": "c", "op": "=", "value": "EUR"}]
+      }
     }
   ]
 }
