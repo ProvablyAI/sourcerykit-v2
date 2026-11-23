@@ -10,11 +10,12 @@ from sourcerykit.errors import (
 from sourcerykit.intercept import async_intercept_context
 from sourcerykit.schemas import Outcome
 from sourcerykit.trusted_endpoints import insert_trusted_endpoint
-from sourcerykit.verify import Report, Run, run
+from sourcerykit.verify import Report, Run, check, run
 
 __all__ = [
     "bootstrap_system",
     "run",
+    "check",
     "async_intercept_context",
     "insert_trusted_endpoint",
     # Types

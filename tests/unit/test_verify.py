@@ -4,14 +4,15 @@ import asyncio
 import base64
 import json
 import uuid
+from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from sourcerykit import verify as verify_module
-from sourcerykit.claims import Claim
+from sourcerykit.claims import Claim, Verdict
 from sourcerykit.facts import Fact
 from sourcerykit.intercept import interceptor
 from sourcerykit.intercept.interceptor import async_intercept_context
@@ -45,13 +46,30 @@ def _claim(text: str, path: str, value: Any) -> dict[str, Any]:
     }
 
 
+ORG = uuid.uuid4()
+QUERY = sqlite_facts({CALL: RESPONSE})
+
+
+async def _prove(statement: str, proofs: dict[str, tuple[uuid.UUID, str]]) -> list[Any]:
+    """A stand-in prover on SQLite: its "proof" of a query is the query itself."""
+    proofs[statement] = (uuid.uuid4(), base64.b64encode(statement.encode()).decode())
+    return await QUERY(statement)
+
+
+async def _public_verifier(_client: object, _url: str, proof: str) -> dict[str, Any]:
+    """The stand-in public verifier: it reruns the query its stand-in proof holds."""
+    statement = base64.b64decode(proof).decode()
+    rows = [[value] for value in await QUERY(statement)]
+    return {"sql_query": statement, "result": {"type": "resultset", "rows": rows}, "proof": {"status": "Completed"}}
+
+
 async def _verify(answer: str, claims: list[dict[str, Any]] | str) -> verify_module.Report:
     """Run.verify with the recorded call and the facts table on SQLite instead of Postgres."""
-    query = sqlite_facts({CALL: RESPONSE})
 
     async def check(found: list[Claim], rows: list[Fact]) -> list[verify_module.ClaimResult]:
         assert {fact.call_ref for fact in rows} == {CALL}
-        return await verify_module._results(found, query, {})
+        proofs: dict[str, tuple[uuid.UUID, str]] = {}
+        return await verify_module._results(found, lambda statement: _prove(statement, proofs), proofs)
 
     sent: list[list[dict[str, str]]] = []
 
@@ -64,6 +82,7 @@ async def _verify(answer: str, claims: list[dict[str, Any]] | str) -> verify_mod
     with (
         patch.object(verify_module, "_load_calls", AsyncMock(return_value=[(CALL, "https://w.example", RESPONSE)])),
         patch.object(verify_module, "_check", check),
+        patch.object(verify_module, "get_settings", return_value=MagicMock(org_id=ORG)),
     ):
         report = await run.verify(answer, complete=complete, model="test-model")
     assert RESPONSE in sent[0][-1]["content"] and report.answer in sent[0][-1]["content"]
@@ -109,16 +128,8 @@ async def test_verify_normalises_the_answer() -> None:
         ([], Outcome.ERROR),
     ],
 )
-def test_outcome(verdicts: list[str], outcome: Outcome) -> None:
-    results = [
-        verify_module.ClaimResult(
-            claim=Claim.model_validate({"text": "x", "unsupported": "no data"}),
-            verdict=verdict,
-            steps={},
-        )
-        for verdict in verdicts
-    ]
-    assert verify_module._outcome(results) == outcome
+def test_outcome(verdicts: list[Verdict], outcome: Outcome) -> None:
+    assert verify_module._outcome(verdicts) == outcome
 
 
 async def test_claims_check_proven_answers_as_the_prover_returns_them() -> None:
@@ -146,3 +157,56 @@ async def test_claims_check_proven_answers_as_the_prover_returns_them() -> None:
 
 def test_a_downloaded_proof_is_kept_as_base64_of_its_bytes() -> None:
     assert base64.b64decode(verify_module._encode(b"1,2,255")) == bytes([1, 2, 255])
+
+
+def _tamper_answer(report: dict[str, Any]) -> None:
+    report["claims"][0]["steps"]["v"]["answer"] = ["15"]
+
+
+def _tamper_verdict(report: dict[str, Any]) -> None:
+    report["claims"][1]["verdict"] = "supported"
+    report["outcome"] = "PASS"
+
+
+def _tamper_check(report: dict[str, Any]) -> None:
+    report["claims"][1]["claim"]["checks"][0]["value"] = 68
+    report["claims"][1]["verdict"] = "supported"
+    report["outcome"] = "PASS"
+
+
+def _tamper_proof(report: dict[str, Any]) -> None:
+    report["claims"][0]["steps"]["v"]["proof"] = base64.b64encode(b"SELECT 15").decode()
+
+
+@pytest.mark.parametrize(
+    ("tamper", "problem"),
+    [
+        (lambda _: None, None),
+        (_tamper_answer, "proven 14.0, the report says 15"),
+        (_tamper_verdict, "the proven answers give contradicted, the report says supported"),
+        (_tamper_check, "not a claim of the model's reply"),
+        (_tamper_proof, "the proof is for another query"),
+    ],
+)
+async def test_check_finds_what_was_changed_in_a_report(
+    tamper: Callable[[dict[str, Any]], None], problem: str | None
+) -> None:
+    report = await _verify(
+        "It is 14°C, humidity 80%.", [_claim("14°C", "$.temperature", 14), _claim("humidity 80%", "$.humidity", 80)]
+    )
+    received = json.loads(report.model_dump_json())  # what a third party holds
+    tamper(received)
+    with patch.object(verify_module, "_verify_proof", _public_verifier):
+        problems = await verify_module.check(verify_module.Report.model_validate(received))
+    assert problems == [] if problem is None else any(problem in p for p in problems), problems
+
+
+async def test_check_rejects_a_proof_the_public_verifier_refuses() -> None:
+    report = await _verify("It is 14°C.", [_claim("14°C", "$.temperature", 14)])
+    with patch.object(verify_module, "_verify_proof", AsyncMock(return_value=None)):
+        assert await verify_module.check(report) == ["'14°C' step v: the proof does not verify"]
+
+
+async def test_report_prints_the_outcome_and_each_claim_with_its_proven_values() -> None:
+    report = await _verify("It is 14°C.", [_claim("14°C", "$.temperature", 14)])
+    assert str(report) == "Outcome: PASS   (claims by linker:test-model)\n  SUPPORTED      '14°C'  proven: v=14.0"

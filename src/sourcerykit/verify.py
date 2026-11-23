@@ -7,7 +7,7 @@
 The linker (one call to the caller's model) turns the answer into claims. The recorded responses,
 flattened into the facts table, are sealed (committed to by the qedb middleware), and every query
 the claims run on them is proven: the model only writes the checks, the verdicts come from proven
-data, and the report carries the proofs.
+data, and the report carries the proofs, which ``check`` lets anyone verify.
 """
 
 import asyncio
@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 from uuid import UUID
 
+import httpx
 from provably.service import service
 from pydantic import BaseModel
 from sqlalchemy import insert, select, text
@@ -25,6 +26,7 @@ from sqlalchemy import insert, select, text
 from sourcerykit import linker
 from sourcerykit.bootstrap.bootstrap import get_bootstrap
 from sourcerykit.claims import Claim, Query, Verdict, verify
+from sourcerykit.config import DEFAULT_PROVABLY_API_URL, get_settings
 from sourcerykit.db._engine import get_engine
 from sourcerykit.db._schema import facts, intercepts
 from sourcerykit.errors import SourceryKitBootstrapError
@@ -54,6 +56,8 @@ class ClaimResult(BaseModel):
 
 
 class Report(BaseModel):
+    org_id: UUID
+    """The Provably organization whose middleware made the proofs."""
     outcome: Outcome
     """CAUGHT if any claim is contradicted; else ERROR if none is supported; else PASS_WITH_NOTES if
     some have no data to check them (the unsupported ones), PASS if every claim is supported."""
@@ -70,6 +74,18 @@ class Report(BaseModel):
     """Claims the model wrote that were rejected, and why."""
     unchecked: list[tuple[int, str]]
     """Offset and text of each number, time and date in the answer that no claim quotes."""
+
+    def __str__(self) -> str:
+        lines = [f"Outcome: {self.outcome}   (claims by {self.extractor})"]
+        for result in self.claims:
+            if result.claim.unsupported is not None:
+                lines.append(f"  NOT VERIFIABLE {result.claim.text!r}  {result.claim.unsupported}")
+                continue
+            proven = "  ".join(f"{name}={_show(step.answer)}" for name, step in result.steps.items())
+            lines.append(f"  {result.verdict.upper():14} {result.claim.text!r}  proven: {proven}")
+        lines += [f"  DROPPED        {reason}" for reason in self.dropped]
+        lines += [f"  UNCHECKED      {text!r}: no claim checks it" for _, text in self.unchecked]
+        return "\n".join(lines)
 
 
 class Run:
@@ -91,7 +107,8 @@ class Run:
         claims, dropped = linker.parse(answer, reply, [call_id for call_id, _, _ in recorded], paths)
         results = await _check(claims, rows) if claims else []
         return Report(
-            outcome=_outcome(results),
+            org_id=get_settings().org_id,
+            outcome=_outcome([result.verdict for result in results]),
             answer=answer,
             extractor=f"linker:{model}",
             reply=reply,
@@ -100,6 +117,77 @@ class Run:
             dropped=dropped,
             unchecked=linker.unchecked(answer, claims),
         )
+
+
+async def check(report: Report, *, api_url: str = DEFAULT_PROVABLY_API_URL) -> list[str]:
+    """What is wrong with ``report``; nothing if it holds. Needs no Provably account.
+
+    The public verifier checks every proof and returns the query and answer it proves; each claim
+    must be one the model's reply holds and the linker's guards accept; every verdict and the
+    outcome are recomputed from the proven answers.
+    """
+    problems: list[str] = []
+    proven: dict[str, list[Any]] = {}
+    url = f"{api_url.rstrip('/')}/api/v1/organizations/{report.org_id}/queries/verify_proof"
+    async with httpx.AsyncClient(timeout=120) as client:
+        for result in report.claims:
+            for name, step in result.steps.items():
+                if step.sql is None:
+                    continue
+                if step.proof is None:
+                    problems.append(f"{result.claim.text!r} step {name}: no proof")
+                    continue
+                verified = await _verify_proof(client, url, step.proof)
+                if verified is None or verified["proof"]["status"] != "Completed":
+                    problems.append(f"{result.claim.text!r} step {name}: the proof does not verify")
+                elif verified["sql_query"] != step.sql:
+                    problems.append(f"{result.claim.text!r} step {name}: the proof is for another query")
+                else:
+                    proven[step.sql] = _cells(verified["result"])
+
+    async def query(statement: str) -> list[Any]:
+        if statement not in proven:
+            raise _NotProven(statement)
+        return proven[statement]
+
+    allowed, _ = linker.parse(report.answer, report.reply, report.calls)
+    verdicts = []
+    for result in report.claims:
+        text = repr(result.claim.text)
+        if result.claim not in allowed:
+            problems.append(f"{text}: not a claim of the model's reply that the guards accept")
+        try:
+            verdict, queries = await verify(result.claim, query, table=facts.name)
+        except _NotProven:
+            continue  # its step is already reported
+        verdicts.append(verdict)
+        if verdict != result.verdict:
+            problems.append(f"{text}: the proven answers give {verdict}, the report says {result.verdict}")
+        for name, (_, answer) in queries.items():
+            stated = _show(result.steps[name].answer)
+            if _show(answer) != stated:
+                problems.append(f"{text} step {name}: proven {_show(answer)}, the report says {stated}")
+    if not problems and _outcome(verdicts) != report.outcome:
+        problems.append(f"the verdicts give {_outcome(verdicts)}, the report says {report.outcome}")
+    return problems
+
+
+class _NotProven(LookupError):
+    """A query a claim runs has no verified proof."""
+
+
+async def _verify_proof(client: httpx.AsyncClient, url: str, proof: str) -> dict[str, Any] | None:
+    """The public verifier's answer for ``proof``, or None if it rejects it."""
+    proof_file = ",".join(str(byte) for byte in base64.b64decode(proof))
+    response = await client.post(url, files={"proof_file": ("proof.provably", proof_file)})
+    if response.status_code >= 400:
+        return None
+    answer: dict[str, Any] = response.json()
+    return answer
+
+
+def _show(values: list[Any]) -> str:
+    return str(values[0]) if len(values) == 1 else "[" + ", ".join(map(str, values)) + "]"
 
 
 @asynccontextmanager
@@ -113,8 +201,8 @@ async def run() -> AsyncIterator[Run]:
         _ctx_run_calls.reset(token)
 
 
-def _outcome(results: list[ClaimResult]) -> Outcome:
-    verdicts = {result.verdict for result in results}
+def _outcome(verdict_list: list[Verdict]) -> Outcome:
+    verdicts = set(verdict_list)
     if "contradicted" in verdicts:
         return Outcome.CAUGHT
     if "supported" not in verdicts:
@@ -182,7 +270,8 @@ def _cells(result: dict[str, Any]) -> list[Any]:
     if result["type"] == "aggregate":
         cells = [result["value"]]
     else:
-        cells = [row[0] for row in result["value"]["rows"]]
+        table = result.get("value", result)  # the public verifier inlines the table
+        cells = [row[0] for row in table["rows"]]
     return [None if cell == "<null>" else cell for cell in cells]
 
 
