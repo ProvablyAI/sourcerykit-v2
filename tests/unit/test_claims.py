@@ -3,6 +3,7 @@
 import json
 import sqlite3
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -42,12 +43,12 @@ RESPONSES = {
 }
 
 
-@pytest.fixture(scope="module")
-def query() -> Any:
+def sqlite_facts(responses: dict[uuid.UUID, Any]) -> Callable[[str], list[Any]]:
+    """A query function on an in-memory SQLite facts table holding ``responses``."""
     db = sqlite3.connect(":memory:")
     db.execute("CREATE TABLE facts (call_ref, path, pattern, idx INTEGER, obj, type, num REAL, text)")
-    for call_ref, response in RESPONSES.items():
-        rows = flatten(call_ref, json.dumps(response))
+    for call_ref, response in responses.items():
+        rows = flatten(call_ref, response if isinstance(response, str) else json.dumps(response))
         assert rows is not None
         db.executemany(
             "INSERT INTO facts VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -66,6 +67,11 @@ def query() -> Any:
             ],
         )
     return lambda statement: [row[0] for row in db.execute(statement)]
+
+
+@pytest.fixture(scope="module")
+def query() -> Callable[[str], list[Any]]:
+    return sqlite_facts(RESPONSES)
 
 
 def _verdict(query: Any, claim: dict[str, Any]) -> str:
@@ -120,7 +126,7 @@ class TestChains:
         assert verdict == "supported"
         assert queries["low"] == (
             f"SELECT MIN(num) FROM facts WHERE call_ref = '{FLIGHTS}' AND pattern = '$.flights[*].price'"
-            " AND obj IN ('$.flights[1]', '$.flights[2]')",
+            " AND obj IN ('$.flights[1]', '$.flights[2]') AND type <> 'array'",
             [140],
         )
 
@@ -155,6 +161,14 @@ class TestChains:
             == "supported"
         )
 
+    def test_aggregates_skip_array_rows(self, query: Any) -> None:
+        """A pattern missing its [*] matches the array's own row, whose num is its length (4)."""
+        low = _step(FLIGHTS, "min", {"pattern": "$.flights"})
+        count = _step(FLIGHTS, "count", {"pattern": "$.flights"})
+        claim = {"steps": {"low": low, "n": count}, "checks": [{"expr": "n", "op": "=", "value": 0}]}
+        assert _verdict(query, claim) == "supported"
+        assert _verdict(query, {**claim, "checks": [{"expr": "low", "op": "<", "value": 13}]}) == "contradicted"
+
     def test_empty_source_selects_nothing_without_a_query(self, query: Any) -> None:
         none = {**BA, "where": {"pattern": "$.flights[*].airline", "text": "Lufthansa"}}
         low = _step(FLIGHTS, "min", {"pattern": "$.flights[*].price", "obj": {"in": {"step": "none"}}})
@@ -188,6 +202,10 @@ class TestAcrossCalls:
             ({"expr": "today / (before - 11.2)", "op": ">", "value": 0}, "contradicted"),  # division by zero
         ):
             assert _verdict(query, {"steps": steps, "checks": [check]}) == verdict
+
+    def test_step_named_like_a_python_keyword(self, query: Any) -> None:
+        steps = {"from": _step(WEATHER, "text", {"path": "$.current.temperature_2m"})}
+        assert _verdict(query, {"steps": steps, "checks": [{"expr": "from", "op": "=", "value": 14.1}]}) == "supported"
 
     def test_count_over_several_calls(self, query: Any) -> None:
         step = {

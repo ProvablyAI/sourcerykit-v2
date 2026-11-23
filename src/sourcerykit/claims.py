@@ -91,7 +91,8 @@ class Check(BaseModel):
 
     @model_validator(mode="after")
     def _valid(self) -> "Check":
-        _names(self.expr)
+        if not _names(self.expr):  # "99" = 99 would hold whatever the data says
+            raise ValueError(f"check {self.expr!r} reads no step")
         if self.op == "approx" and (self.tol is None or self.tol < 0):
             raise ValueError("approx needs a tolerance tol >= 0")
         if self.op == "between":
@@ -186,12 +187,16 @@ def sql(step: Step, answers: dict[str, list[Any]], table: str = "facts") -> str 
         if op == "in":
             if not operand:
                 return None
+            # TODO: IN is slow, tune/replace the query
             conditions.append(f"{column} IN ({_list(column, operand)})")
         elif op == "between":
             low, high = operand
             conditions.append(f"{column} BETWEEN {_literal(column, low)} AND {_literal(column, high)}")
         else:
             conditions.append(f"{column} {'<>' if op == '!=' else op} {_literal(column, operand)}")
+    if step.select in _AGGREGATES:
+        # An array's own row holds its length in num: never what a minimum or count is about.
+        conditions.append("type <> 'array'")
     select = _AGGREGATES.get(step.select, step.select)
     return f"SELECT {select} FROM {table} WHERE {' AND '.join(conditions)}"
 
@@ -264,6 +269,8 @@ def _number(value: Any) -> Decimal:
 
 def _names(expr: str) -> set[str]:
     """Step names in ``expr``, which may only hold names, numbers, + - * / and parentheses."""
+    if _IDENTIFIER.fullmatch(expr):  # a step name, even one Python reserves, such as "from"
+        return {expr}
     try:
         tree = ast.parse(expr, mode="eval")
     except SyntaxError as e:
@@ -298,16 +305,19 @@ def _evaluate(node: ast.expr, answers: dict[str, list[Any]]) -> Decimal:
 
 
 def _holds(check: Check, answers: dict[str, list[Any]]) -> bool:
-    tree = ast.parse(check.expr, mode="eval").body
+    step = check.expr if _IDENTIFIER.fullmatch(check.expr) else None
     want = check.value
     if isinstance(want, (str, bool)) or want is None:
-        if not isinstance(tree, ast.Name):
+        if step is None:
             raise _Unresolved("text is compared with a single step")
-        got = _single(answers[tree.id])
+        got = _single(answers[step])
         if isinstance(want, bool):
             want = "true" if want else "false"
         return bool(got == want) == (check.op == "=")
-    got = _evaluate(tree, answers)
+    if step is not None:
+        got = _number(_single(answers[step]))
+    else:
+        got = _evaluate(ast.parse(check.expr, mode="eval").body, answers)
     if check.op == "between":
         low, high = (_number(bound) for bound in want)
         return low <= got <= high
