@@ -33,6 +33,7 @@ from sourcerykit.errors import SourceryKitBootstrapError
 from sourcerykit.facts import Fact, flatten
 from sourcerykit.intercept.interceptor import _ctx_run_calls
 from sourcerykit.schemas.outcome import Outcome
+from sourcerykit.trusted_endpoints import is_endpoint_trusted, list_all_trusted_endpoints_detailed
 
 Complete = Callable[[list[dict[str, str]]], Awaitable[str]]
 """The caller's model: chat messages in, the text of its reply out."""
@@ -68,12 +69,15 @@ class Report(BaseModel):
     reply: str
     """The model's reply, as received: anyone can re-check its claims, but not re-run the model."""
     calls: list[UUID]
-    """Intercept row ids of the recorded calls, in order: the linker sees them as call_1, call_2..."""
+    """Intercept row ids of the recorded calls used as evidence, in order: the linker sees them as
+    call_1, call_2..."""
     claims: list[ClaimResult]
     dropped: list[str]
     """Claims the model wrote that were rejected, and why."""
     unchecked: list[tuple[int, str]]
     """Offset and text of each number, time and date in the answer that no claim quotes."""
+    untrusted: list[str] = []
+    """URLs of the recorded calls left out as evidence: the project trusts other endpoints only."""
 
     def __str__(self) -> str:
         lines = [f"Outcome: {self.outcome}   (claims by {self.extractor})"]
@@ -85,6 +89,7 @@ class Report(BaseModel):
             lines.append(f"  {result.verdict.upper():14} {result.claim.text!r}  proven: {proven}")
         lines += [f"  DROPPED        {reason}" for reason in self.dropped]
         lines += [f"  UNCHECKED      {text!r}: no claim checks it" for _, text in self.unchecked]
+        lines += [f"  UNTRUSTED      {url}: recorded, not used as evidence" for url in self.untrusted]
         return "\n".join(lines)
 
 
@@ -100,7 +105,7 @@ class Run:
         Call it after the ``run()`` block, so the model's own HTTP traffic is not recorded.
         """
         answer = unicodedata.normalize("NFC", answer).replace("\r\n", "\n")
-        recorded = await _load_calls(self.calls)
+        recorded, untrusted = await _by_trust(await _load_calls(self.calls))
         rows = [fact for call_id, _, raw in recorded for fact in flatten(call_id, raw) or []]
         reply = await complete(linker.messages(answer, [(url, raw) for _, url, raw in recorded]))
         paths = {p for fact in rows for p in (fact.path, fact.pattern)}
@@ -116,6 +121,7 @@ class Run:
             claims=results,
             dropped=dropped,
             unchecked=linker.unchecked(answer, claims),
+            untrusted=untrusted,
         )
 
 
@@ -208,6 +214,19 @@ def _outcome(verdict_list: list[Verdict]) -> Outcome:
     if "supported" not in verdicts:
         return Outcome.ERROR
     return Outcome.PASS_WITH_NOTES if "unsupported" in verdicts else Outcome.PASS
+
+
+async def _by_trust(recorded: list[tuple[UUID, str, str]]) -> tuple[list[tuple[UUID, str, str]], list[str]]:
+    """The calls that count as evidence, and the URLs of the others.
+
+    With no trusted endpoints, every recorded call counts. Once a project lists some, only calls to
+    them do, so a tool whose URL the model can steer cannot bring in data of its own choosing.
+    """
+    if not recorded or not await list_all_trusted_endpoints_detailed():
+        return recorded, []
+    trusted = await asyncio.gather(*(is_endpoint_trusted(url) for _, url, _ in recorded))
+    evidence = [call for call, ok in zip(recorded, trusted, strict=True) if ok]
+    return evidence, [url for (_, url, _), ok in zip(recorded, trusted, strict=True) if not ok]
 
 
 async def _load_calls(call_ids: list[UUID]) -> list[tuple[UUID, str, str]]:

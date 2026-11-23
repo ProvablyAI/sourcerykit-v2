@@ -63,11 +63,20 @@ async def _public_verifier(_client: object, _url: str, proof: str) -> dict[str, 
     return {"sql_query": statement, "result": {"type": "resultset", "rows": rows}, "proof": {"status": "Completed"}}
 
 
-async def _verify(answer: str, claims: list[dict[str, Any]] | str) -> verify_module.Report:
-    """Run.verify with the recorded call and the facts table on SQLite instead of Postgres."""
+WEATHER_URL = "https://w.example"
+
+
+async def _verify(
+    answer: str,
+    claims: list[dict[str, Any]] | str,
+    *,
+    also_recorded: tuple[tuple[uuid.UUID, str, str], ...] = (),
+    trusted: tuple[str, ...] = (),
+) -> verify_module.Report:
+    """Run.verify with the recorded calls and the facts table on SQLite instead of Postgres."""
 
     async def check(found: list[Claim], rows: list[Fact]) -> list[verify_module.ClaimResult]:
-        assert {fact.call_ref for fact in rows} == {CALL}
+        assert {fact.call_ref for fact in rows} == {CALL}  # only the evidence is sealed
         proofs: dict[str, tuple[uuid.UUID, str]] = {}
         return await verify_module._results(found, lambda statement: _prove(statement, proofs), proofs)
 
@@ -77,10 +86,16 @@ async def _verify(answer: str, claims: list[dict[str, Any]] | str) -> verify_mod
         sent.append(messages)
         return claims if isinstance(claims, str) else json.dumps({"claims": claims})
 
+    async def is_trusted(url: str) -> bool:
+        return url in trusted
+
+    recorded = [(CALL, WEATHER_URL, RESPONSE), *also_recorded]
     run = verify_module.Run()
-    run.calls.append(CALL)
+    run.calls.extend(call_id for call_id, _, _ in recorded)
     with (
-        patch.object(verify_module, "_load_calls", AsyncMock(return_value=[(CALL, "https://w.example", RESPONSE)])),
+        patch.object(verify_module, "_load_calls", AsyncMock(return_value=recorded)),
+        patch.object(verify_module, "list_all_trusted_endpoints_detailed", AsyncMock(return_value=list(trusted))),
+        patch.object(verify_module, "is_endpoint_trusted", is_trusted),
         patch.object(verify_module, "_check", check),
         patch.object(verify_module, "get_settings", return_value=MagicMock(org_id=ORG)),
     ):
@@ -210,3 +225,24 @@ async def test_check_rejects_a_proof_the_public_verifier_refuses() -> None:
 async def test_report_prints_the_outcome_and_each_claim_with_its_proven_values() -> None:
     report = await _verify("It is 14°C.", [_claim("14°C", "$.temperature", 14)])
     assert str(report) == "Outcome: PASS   (claims by linker:test-model)\n  SUPPORTED      '14°C'  proven: v=14.0"
+
+
+EVIL = (uuid.uuid4(), "https://evil.example/weather", json.dumps({"temperature": 30}))
+
+
+async def test_with_no_trusted_endpoints_every_recorded_call_is_evidence() -> None:
+    report = await _verify("It is 14°C.", [_claim("14°C", "$.temperature", 14)])
+    assert report.calls == [CALL] and report.untrusted == []
+
+
+async def test_once_endpoints_are_trusted_a_call_to_another_is_left_out() -> None:
+    claim_on_evil = {**_claim("30°C", "$.temperature", 30), "steps": {"v": {"call": "call_2", "select": "num"}}}
+    report = await _verify(
+        "It is 14°C, or 30°C.",
+        [_claim("14°C", "$.temperature", 14), claim_on_evil],
+        also_recorded=(EVIL,),
+        trusted=(WEATHER_URL,),
+    )
+    assert report.calls == [CALL] and report.untrusted == [EVIL[1]]
+    assert [r.claim.text for r in report.claims] == ["14°C"]  # the linker was never shown call_2
+    assert "UNTRUSTED      https://evil.example/weather: recorded, not used as evidence" in str(report)

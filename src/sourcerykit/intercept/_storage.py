@@ -4,10 +4,8 @@ from uuid import UUID
 
 from sourcerykit.db._engine import get_engine
 from sourcerykit.db._intercepts import insert_intercept
-from sourcerykit.errors import SourceryKitTrustError
 from sourcerykit.intercept._self_egress import is_self_egress
 from sourcerykit.logger import get_logger
-from sourcerykit.trusted_endpoints import is_endpoint_trusted
 from sourcerykit.utils.validation import validate_length
 
 _log = get_logger(__name__)
@@ -31,10 +29,6 @@ async def add_intercept_row(
     validate_length("action_name", action_name, max_len=255)
     if is_self_egress():
         return None
-
-    trusted = await is_endpoint_trusted(url)
-    if not trusted:
-        raise SourceryKitTrustError(f"endpoint not registered in trust registry: {url}")
 
     engine = get_engine()
 

@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from sourcerykit.errors import SourceryKitTrustError
 from sourcerykit.intercept._storage import add_intercept_row, hash_payload
 
 # ---------------------------------------------------------------------------
@@ -57,27 +56,11 @@ class TestAddInterceptRow:
             )
         assert result is None
 
-    async def test_raises_trust_error_when_endpoint_not_trusted(self) -> None:
-        with (
-            patch("sourcerykit.intercept._storage.is_self_egress", return_value=False),
-            patch("sourcerykit.intercept._storage.is_endpoint_trusted", AsyncMock(return_value=False)),
-        ):
-            with pytest.raises(SourceryKitTrustError, match="endpoint not registered"):
-                await add_intercept_row(
-                    url="https://untrusted.com",
-                    method="GET",
-                    request_payload={},
-                    raw="{}",
-                    agent_id="agent-1",
-                    action_name="action-a",
-                )
-
     async def test_returns_row_id_on_success(self) -> None:
         expected_id = uuid.uuid4()
         engine = _make_engine_begin_mock(returned_id=expected_id)
         with (
             patch("sourcerykit.intercept._storage.is_self_egress", return_value=False),
-            patch("sourcerykit.intercept._storage.is_endpoint_trusted", AsyncMock(return_value=True)),
             patch("sourcerykit.intercept._storage.get_engine", return_value=engine),
         ):
             result = await add_intercept_row(
