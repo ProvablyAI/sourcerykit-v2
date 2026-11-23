@@ -16,7 +16,7 @@ class TestInsertIntercept:
             action_name="fetch",
             source_url="https://api.example.com",
             request_payload={"method": "GET"},
-            raw_response={"status": 200},
+            raw_response='{"status": 200}',
             response_hash="abc123",
         )
         # Should be a SQLAlchemy Insert object
@@ -27,7 +27,7 @@ class TestInsertIntercept:
     def test_returning_id_clause_present(self) -> None:
         from sourcerykit.db._intercepts import insert_intercept
 
-        stmt = insert_intercept("a", "b", "https://c.com", {}, {}, "hash")
+        stmt = insert_intercept("a", "b", "https://c.com", {}, "{}", "hash")
         compiled = str(stmt.compile())
         assert "RETURNING" in compiled.upper() or "returning" in compiled.lower()
 

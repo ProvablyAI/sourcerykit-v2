@@ -35,10 +35,12 @@ async def load_intercept_payload_by_call_ref(
         _log.error("intercept_request_payload_corrupt", call_ref=call_ref, error=str(e))
         raise SourceryKitStorageError("Stored request_payload is not valid JSON") from e
 
-    try:
-        resp = json.loads(row.raw_response) if row.raw_response else None
-    except json.JSONDecodeError as e:
-        _log.error("intercept_raw_response_corrupt", call_ref=call_ref, error=str(e))
-        raise SourceryKitStorageError("Stored raw_response is not valid JSON") from e
+    return req, parse_response(row.raw_response) if row.raw_response else None, row.id
 
-    return req, resp, row.id
+
+def parse_response(raw: str) -> Any:
+    """The stored response body as JSON; a body that is not JSON as ``{"text": body}``."""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {"text": raw}

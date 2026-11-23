@@ -14,7 +14,7 @@ _log = get_logger(__name__)
 _orig_async_client_send: Callable[..., Awaitable[httpx.Response]] | None = None
 
 
-def init_httpx_hooks(record_fn: Callable[[str, str, dict[str, Any], dict[str, Any]], Awaitable[None]]) -> None:
+def init_httpx_hooks(record_fn: Callable[[str, str, dict[str, Any], str], Awaitable[None]]) -> None:
     """Patch ``httpx.AsyncClient.send``."""
     global _orig_async_client_send
     if _orig_async_client_send is not None:
@@ -26,7 +26,7 @@ def init_httpx_hooks(record_fn: Callable[[str, str, dict[str, Any], dict[str, An
 
 def _make_async_wrapper(
     orig: Callable[..., Awaitable[httpx.Response]],
-    record_fn: Callable[[str, str, dict[str, Any], dict[str, Any]], Awaitable[None]],
+    record_fn: Callable[[str, str, dict[str, Any], str], Awaitable[None]],
 ) -> Callable[..., Awaitable[httpx.Response]]:
     async def wrapped(self: httpx.AsyncClient, request: httpx.Request, **kwargs: Any) -> httpx.Response:
         is_stream = kwargs.get("stream", False) or "text/event-stream" in request.headers.get("accept", "")
@@ -37,12 +37,7 @@ def _make_async_wrapper(
 
         url, method, payload = _httpx_request_to_payload(request)
         if not is_stream:
-            try:
-                raw = response.json()
-            except Exception as e:
-                _log.debug("httpx_response_json_parse_failed", url=url, error=str(e))
-                raw = {"text": response.text}
-            await record_fn(url, method, payload, raw)
+            await record_fn(url, method, payload, response.text)
             return response
 
         # Passive async stream
@@ -55,7 +50,7 @@ def _make_async_wrapper(
                 yield chunk
             try:
                 full_text = b"".join(chunks).decode(errors="replace")
-                await record_fn(url, method, payload, {"stream_logged": full_text})
+                await record_fn(url, method, payload, full_text)
             except Exception as e:
                 _log.warning("httpx_stream_record_failed", url=url, error=str(e))
 

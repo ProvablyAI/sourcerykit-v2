@@ -17,7 +17,7 @@ _orig_adapter_send: Callable[..., Response] | None = None
 
 
 def init_requests_hooks(
-    record_fn: Callable[[str, str, dict[str, Any], dict[str, Any]], Coroutine[Any, Any, None]],
+    record_fn: Callable[[str, str, dict[str, Any], str], Coroutine[Any, Any, None]],
 ) -> None:
     """Patch ``requests.adapters.HTTPAdapter.send``."""
     global _orig_adapter_send
@@ -31,7 +31,7 @@ def init_requests_hooks(
 
 def _make_requests_wrapper(
     orig: Callable[..., Response],
-    record_fn: Callable[[str, str, dict[str, Any], dict[str, Any]], Coroutine[Any, Any, None]],
+    record_fn: Callable[[str, str, dict[str, Any], str], Coroutine[Any, Any, None]],
 ) -> Callable[..., Response]:
     def wrapped(self: HTTPAdapter, request: PreparedRequest, **kwargs: Any) -> Response:
         response = orig(self, request, **kwargs)
@@ -44,14 +44,7 @@ def _make_requests_wrapper(
             kwargs.get("stream", False) or "text/event-stream" in response.headers.get("Content-Type", "").lower()
         )
 
-        if not is_stream:
-            try:
-                raw = response.json()
-            except Exception as e:
-                _log.debug("requests_response_json_parse_failed", url=url, error=str(e))
-                raw = {"text": response.text}
-        else:
-            raw = {"stream_logged": "stream_captured_via_requests"}
+        raw = json.dumps({"stream_logged": "stream_captured_via_requests"}) if is_stream else response.text
 
         _run_async(record_fn(url, method, payload, raw))
 

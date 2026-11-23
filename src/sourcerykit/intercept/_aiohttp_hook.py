@@ -15,7 +15,7 @@ _orig_request: Callable[..., Awaitable[Any]] | None = None
 _AIOHTTP_KWARG_KEYS = ("params", "json", "data")
 
 
-def init_aiohttp_hooks(record_fn: Callable[[str, str, dict[str, Any], dict[str, Any]], Awaitable[None]]) -> None:
+def init_aiohttp_hooks(record_fn: Callable[[str, str, dict[str, Any], str], Awaitable[None]]) -> None:
     """Patch ``aiohttp.ClientSession._request``."""
     global _orig_request
     if _orig_request is not None:
@@ -29,7 +29,7 @@ def init_aiohttp_hooks(record_fn: Callable[[str, str, dict[str, Any], dict[str, 
 
 def _make_aiohttp_wrapper(
     orig: Callable[..., Awaitable[Any]],
-    record_fn: Callable[[str, str, dict[str, Any], dict[str, Any]], Awaitable[None]],
+    record_fn: Callable[[str, str, dict[str, Any], str], Awaitable[None]],
 ) -> Callable[..., Awaitable[Any]]:
     async def wrapped(self: aiohttp.ClientSession, method: str, str_or_url: Any, **kwargs: Any) -> Any:
         response = await orig(self, method, str_or_url, **kwargs)
@@ -45,16 +45,14 @@ def _make_aiohttp_wrapper(
         payload: dict[str, Any] = {k: kwargs[k] for k in _AIOHTTP_KWARG_KEYS if k in kwargs and kwargs[k] is not None}
 
         if is_stream:
-            await record_fn(url_str, method, payload, {"stream": "stream_captured_via_aiohttp"})
+            await record_fn(url_str, method, payload, json.dumps({"stream": "stream_captured_via_aiohttp"}))
             return response
 
         try:
-            body_bytes = await response.read()
-            text = body_bytes.decode(errors="replace") if body_bytes else ""
-            raw = json.loads(text) if "application/json" in content_type and text else {"text": text}
+            raw = (await response.read()).decode(errors="replace")
         except Exception as e:
-            _log.warning("aiohttp_body_parse_failed", url=url_str, error=str(e))
-            raw = {"text": "non_json_or_exhausted_payload"}
+            _log.warning("aiohttp_body_read_failed", url=url_str, error=str(e))
+            raw = json.dumps({"text": "non_json_or_exhausted_payload"})
 
         await record_fn(url_str, method, payload, raw)
         return response

@@ -1,5 +1,4 @@
 import hashlib
-import json
 from typing import Any
 from uuid import UUID
 
@@ -14,15 +13,16 @@ from sourcerykit.utils.validation import validate_length
 _log = get_logger(__name__)
 
 
-def hash_payload(raw: dict[str, Any]) -> str:
-    return hashlib.sha256(json.dumps(raw, sort_keys=True).encode()).hexdigest()
+def hash_payload(raw: str) -> str:
+    """SHA-256 of the response body as stored, so it can be recomputed from the row."""
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 async def add_intercept_row(
     url: str,
     method: str,
     request_payload: dict[str, Any],
-    raw: dict[str, Any],
+    raw: str,
     agent_id: str,
     action_name: str,
     call_ref: UUID | None = None,

@@ -85,10 +85,9 @@ class TestLoadInterceptPayloadByCallRef:
             with pytest.raises(SourceryKitStorageError, match="request_payload"):
                 await load_intercept_payload_by_call_ref(ref)
 
-    async def test_raises_storage_error_on_corrupt_raw_response(self) -> None:
-        row = _make_row(request_payload=json.dumps({}), raw_response="not-valid-json")
+    async def test_reads_a_body_that_is_not_json_as_text(self) -> None:
+        row = _make_row(request_payload=json.dumps({}), raw_response="<html>ok</html>")
         engine = _make_engine(row=row)
-        ref = uuid.uuid4()
         with patch("sourcerykit.intercept._loader.get_engine", return_value=engine):
-            with pytest.raises(SourceryKitStorageError, match="raw_response"):
-                await load_intercept_payload_by_call_ref(ref)
+            _, resp, _ = await load_intercept_payload_by_call_ref(uuid.uuid4())
+        assert resp == {"text": "<html>ok</html>"}

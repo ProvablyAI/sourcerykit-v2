@@ -1,5 +1,6 @@
 """Tests for sourcerykit.intercept._storage — hash_payload and add_intercept_row."""
 
+import hashlib
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,22 +14,10 @@ from sourcerykit.intercept._storage import add_intercept_row, hash_payload
 # ---------------------------------------------------------------------------
 
 
-class TestHashPayload:
-    def test_returns_string(self) -> None:
-        result = hash_payload({"key": "value"})
-        assert isinstance(result, str)
-
-    def test_deterministic_for_same_input(self) -> None:
-        payload = {"b": 2, "a": 1}
-        assert hash_payload(payload) == hash_payload(payload)
-
-    def test_key_order_does_not_affect_hash(self) -> None:
-        p1 = {"a": 1, "b": 2}
-        p2 = {"b": 2, "a": 1}
-        assert hash_payload(p1) == hash_payload(p2)
-
-    def test_different_payloads_produce_different_hashes(self) -> None:
-        assert hash_payload({"a": 1}) != hash_payload({"a": 2})
+def test_hash_is_the_sha256_of_the_stored_body() -> None:
+    body = '{"price": 187.30}'
+    assert hash_payload(body) == hashlib.sha256(body.encode()).hexdigest()
+    assert hash_payload(body) != hash_payload('{"price": 187.3}')  # same JSON value, different body
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +51,7 @@ class TestAddInterceptRow:
                 url="https://example.com",
                 method="GET",
                 request_payload={},
-                raw={},
+                raw="{}",
                 agent_id="agent-1",
                 action_name="action-a",
             )
@@ -78,7 +67,7 @@ class TestAddInterceptRow:
                     url="https://untrusted.com",
                     method="GET",
                     request_payload={},
-                    raw={},
+                    raw="{}",
                     agent_id="agent-1",
                     action_name="action-a",
                 )
@@ -96,7 +85,7 @@ class TestAddInterceptRow:
                 url="https://trusted.com",
                 method="POST",
                 request_payload={"q": 1},
-                raw={"resp": "ok"},
+                raw='{"resp": "ok"}',
                 agent_id="agent-1",
                 action_name="action-a",
             )
@@ -108,7 +97,7 @@ class TestAddInterceptRow:
                 url="https://x.com",
                 method="GET",
                 request_payload={},
-                raw={},
+                raw="{}",
                 agent_id="a" * 256,
                 action_name="action",
             )
@@ -119,7 +108,7 @@ class TestAddInterceptRow:
                 url="https://x.com",
                 method="GET",
                 request_payload={},
-                raw={},
+                raw="{}",
                 agent_id="agent",
                 action_name="x" * 256,
             )

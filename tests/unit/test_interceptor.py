@@ -3,6 +3,10 @@
 import uuid
 from unittest.mock import AsyncMock, patch
 
+import httpx
+
+from sourcerykit.facts import flatten
+from sourcerykit.intercept._httpx_hook import _make_async_wrapper
 from sourcerykit.intercept.interceptor import (
     _record,
     async_intercept_context,
@@ -61,3 +65,19 @@ class TestRecord:
             async with async_intercept_context(agent_id="agent-1", action_name="act-1"):
                 await _record("https://example.com", "GET", {}, {})
         # No globals to assert — this is intentional
+
+
+async def test_httpx_hook_records_the_body_as_received() -> None:
+    body = '{"price": 187.30, "id": 12345678901234567890}'  # a float would give 187.3 and ...7168
+    recorded: list[str] = []
+
+    async def send(_client: object, request: httpx.Request, **_: object) -> httpx.Response:
+        return httpx.Response(200, text=body, request=request)
+
+    async def record(_url: str, _method: str, _payload: dict[str, object], raw: str) -> None:
+        recorded.append(raw)
+
+    wrapped = _make_async_wrapper(send, record)
+    await wrapped(httpx.AsyncClient(), httpx.Request("GET", "https://api.example/x"))
+    assert recorded == [body]
+    assert {f.path: f.text for f in flatten(uuid.uuid4(), recorded[0]) or []}["$.id"] == "12345678901234567890"

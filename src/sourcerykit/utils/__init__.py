@@ -9,13 +9,11 @@ from sourcerykit.utils import validation
 def extract_actual(raw_response: str | None, claimed_value: str | None) -> dict[str, Any]:
     """Extract actual values from stored raw_response for each claimed path."""
     from sourcerykit.evaluator._eval_modes import _get_by_json_path
+    from sourcerykit.intercept._loader import parse_response
 
     if not raw_response:
         return {}
-    try:
-        data = json.loads(raw_response)
-    except (json.JSONDecodeError, TypeError):
-        return {}
+    data = parse_response(raw_response)
 
     if not claimed_value:
         return {}
