@@ -32,30 +32,6 @@ class TestInsertIntercept:
         assert "RETURNING" in compiled.upper() or "returning" in compiled.lower()
 
 
-class TestSelectInterceptsByAction:
-    def test_returns_string_with_action_name(self) -> None:
-        from sourcerykit.db._intercepts import select_intercepts_by_action
-
-        sql = select_intercepts_by_action("my_action")
-        assert isinstance(sql, str)
-        assert "my_action" in sql
-
-
-class TestSelectInterceptByCallRef:
-    def test_returns_string_with_call_ref(self) -> None:
-        from sourcerykit.db._intercepts import select_intercept_by_call_ref
-
-        ref = uuid.uuid4()
-        sql = select_intercept_by_call_ref(ref)
-        assert isinstance(sql, str)
-        assert str(ref) in sql
-
-
-# ---------------------------------------------------------------------------
-# DB trusted_endpoint SQL builders
-# ---------------------------------------------------------------------------
-
-
 class TestSelectTrustedEndpointPrefix:
     def test_returns_select_object(self) -> None:
         from sqlalchemy.sql.selectable import Select

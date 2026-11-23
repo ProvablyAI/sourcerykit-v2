@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from typing import Any
 
 from sourcerykit import linker
 from sourcerykit.claims import verify
@@ -85,7 +86,7 @@ def test_parse_matches_curly_quotes_and_keeps_the_answer_s() -> None:
     assert errors == [] and claims[0].text == "isn\u2019t available"
 
 
-def _price_claim(text: str, check: dict) -> dict:
+def _price_claim(text: str, check: dict[str, Any]) -> dict[str, Any]:
     return {
         "text": text,
         "steps": {"p": {"call": "call_1", "select": "num", "where": {"path": "$.price"}}},

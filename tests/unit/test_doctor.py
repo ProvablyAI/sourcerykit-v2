@@ -11,9 +11,7 @@ from sourcerykit.cli.doctor import (
     _check_project_name,
     _check_token_and_org,
     _deep_check_collection_and_ids,
-    _deep_check_integration,
     _run_deep_check_collection_and_ids,
-    _run_deep_check_integration,
     run_doctor,
 )
 from sourcerykit.config import Settings
@@ -33,7 +31,6 @@ def _make_settings(
     schema_id: uuid.UUID | None = None,
     table_id: uuid.UUID | None = None,
     collection_id: uuid.UUID | None = None,
-    integration_key: str | None = None,
 ) -> Settings:
     """Build a real Settings with sensible defaults."""
     return Settings(
@@ -46,7 +43,6 @@ def _make_settings(
         schema_id=schema_id,
         table_id=table_id,
         collection_id=collection_id,
-        integration_key=integration_key,
     )
 
 
@@ -58,7 +54,6 @@ def _make_full_settings(**overrides: object) -> Settings:
         schema_id=overrides.get("schema_id") or uuid.uuid4(),  # type: ignore[arg-type]
         table_id=overrides.get("table_id") or uuid.uuid4(),  # type: ignore[arg-type]
         collection_id=overrides.get("collection_id") or uuid.uuid4(),  # type: ignore[arg-type]
-        integration_key=overrides.get("integration_key") or "i-abc123",  # type: ignore[arg-type]
     )
 
 
@@ -285,32 +280,7 @@ class TestDeepCheckCollectionAndIds:
 
 
 # ---------------------------------------------------------------------------
-# _deep_check_integration
-# ---------------------------------------------------------------------------
-
-
-class TestDeepCheckIntegration:
-    async def test_valid_format(self) -> None:
-        s = _make_full_settings(integration_key="i-abc123")
-        ok, msg = await _deep_check_integration(s)
-        assert ok is True
-        assert "valid" in msg.lower()
-
-    async def test_missing_key(self) -> None:
-        s = _make_settings(integration_key="")
-        ok, msg = await _deep_check_integration(s)
-        assert ok is False
-        assert "missing" in msg.lower()
-
-    async def test_wrong_format(self) -> None:
-        s = _make_settings(integration_key="not-an-integration-key")
-        ok, msg = await _deep_check_integration(s)
-        assert ok is False
-        assert "unexpected format" in msg.lower()
-
-
-# ---------------------------------------------------------------------------
-# _run_deep_check_collection_and_ids / _run_deep_check_integration
+# _run_deep_check_collection_and_ids
 # ---------------------------------------------------------------------------
 
 
@@ -335,16 +305,6 @@ class TestRunDeepChecks:
         assert ok is False
         assert "Cannot reach" in msg
 
-    def test_run_deep_check_integration_handles_unauthorized(self) -> None:
-        s = _make_full_settings()
-        with patch(
-            "sourcerykit.cli.doctor._deep_check_integration",
-            side_effect=ProvablyUnauthorizedError("bad"),
-        ):
-            ok, msg = _run_deep_check_integration(s)
-        assert ok is False
-        assert "expired" in msg.lower()
-
 
 # ---------------------------------------------------------------------------
 # run_doctor
@@ -361,7 +321,6 @@ class TestRunDoctor:
             patch("sourcerykit.cli.doctor._check_project_name", return_value=(True, "ok")),
             patch("sourcerykit.cli.doctor._check_bootstrap_ids", return_value=(True, "ok")),
             patch("sourcerykit.cli.doctor._run_deep_check_collection_and_ids", return_value=(True, "ok")),
-            patch("sourcerykit.cli.doctor._run_deep_check_integration", return_value=(True, "ok")),
             patch("sourcerykit.cli.doctor.console"),
         ):
             run_doctor()  # must not raise
@@ -375,7 +334,6 @@ class TestRunDoctor:
             patch("sourcerykit.cli.doctor._check_project_name", return_value=(True, "ok")),
             patch("sourcerykit.cli.doctor._check_bootstrap_ids", return_value=(True, "ok")),
             patch("sourcerykit.cli.doctor._run_deep_check_collection_and_ids", return_value=(True, "ok")),
-            patch("sourcerykit.cli.doctor._run_deep_check_integration", return_value=(True, "ok")),
             patch("sourcerykit.cli.doctor.console"),
         ):
             run_doctor()  # must not raise
@@ -389,7 +347,6 @@ class TestRunDoctor:
             patch("sourcerykit.cli.doctor._check_project_name", return_value=(True, "ok")),
             patch("sourcerykit.cli.doctor._check_bootstrap_ids", return_value=(False, "missing")),
             patch("sourcerykit.cli.doctor._run_deep_check_collection_and_ids", return_value=(True, "ok")),
-            patch("sourcerykit.cli.doctor._run_deep_check_integration", return_value=(True, "ok")),
             patch("sourcerykit.cli.doctor.run_full_bootstrap", return_value=True),
             patch("sourcerykit.cli.doctor.console"),
         ):

@@ -25,7 +25,6 @@ from sourcerykit.cli.utils import (
     console,
     logout,
     mask_postgres_url,
-    mask_secret,
     prompt_postgres_url_with_retry,
     prompt_project_name,
 )
@@ -98,7 +97,6 @@ def save_bootstrap_ids() -> None:
         SOURCERYKIT_SCHEMA_ID=str(_BOOTSTRAP_INSTANCE.schema_id),
         SOURCERYKIT_TABLE_ID=str(_BOOTSTRAP_INSTANCE.table_id),
         SOURCERYKIT_COLLECTION_ID=str(_BOOTSTRAP_INSTANCE.collection_id),
-        SOURCERYKIT_INTEGRATION_KEY=str(_BOOTSTRAP_INSTANCE.integration_key),
     )
 
 
@@ -286,9 +284,7 @@ def _execute_post_auth_phases(
     console.print(" Local config (.env):")
     console.print(f"   SOURCERYKIT_PROJECT_NAME    = {project_name}")
     console.print(f"   SOURCERYKIT_POSTGRES_URL    = {mask_postgres_url(postgres_url)}")
-    console.print(f"   SOURCERYKIT_COLLECTION_ID   = {_BOOTSTRAP_INSTANCE.collection_id}")
-    integration_key = _BOOTSTRAP_INSTANCE.integration_key or ""
-    console.print(f"   SOURCERYKIT_INTEGRATION_KEY = {mask_secret(integration_key)}\n")
+    console.print(f"   SOURCERYKIT_COLLECTION_ID   = {_BOOTSTRAP_INSTANCE.collection_id}\n")
     return True
 
 

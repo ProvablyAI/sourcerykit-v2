@@ -1,10 +1,10 @@
-"""HTTP intercept: record LLM provider responses into Postgres."""
+"""HTTP intercept: record API responses into Postgres."""
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sourcerykit.intercept._aiohttp_hook import init_aiohttp_hooks
 from sourcerykit.intercept._httpx_hook import init_httpx_hooks
@@ -17,36 +17,24 @@ _log = get_logger(__name__)
 
 _ctx_agent_id: ContextVar[str] = ContextVar("provably_agent_id", default="")
 _ctx_action_name: ContextVar[str] = ContextVar("provably_action_name", default="")
-_ctx_call_ref: ContextVar[UUID | None] = ContextVar("provably_call_ref", default=None)
 # Row ids of the calls recorded inside ``sourcerykit.run()``. A list, not a tuple: tasks the run
 # starts get a copy of the context, and must append to the same list.
 _ctx_run_calls: ContextVar[list[UUID] | None] = ContextVar("sourcerykit_run_calls", default=None)
 
 
 @asynccontextmanager
-async def async_intercept_context(*, agent_id: str, action_name: str) -> AsyncGenerator[str, None]:
-    """Scoped tagging context manager for tracking HTTP traffic (async).
-
-    Yields a unique ``call_ref`` (UUID) that identifies this specific
-    intercept invocation.  The caller should include it in the claim so that
-    ``build_handoff_payload`` can map the claim to the correct intercept row.
-    """
+async def async_intercept_context(*, agent_id: str, action_name: str) -> AsyncGenerator[None, None]:
+    """Record the HTTP calls made inside the block, tagged with ``agent_id`` and ``action_name``."""
     validate_length("agent_id", agent_id, max_len=255)
     validate_length("action_name", action_name, max_len=255)
 
-    call_ref = uuid4()
-
-    _log.debug("intercept_context_entered", agent_id=agent_id, action_name=action_name, call_ref=str(call_ref))
     t_agent = _ctx_agent_id.set(agent_id)
     t_action = _ctx_action_name.set(action_name)
-    t_ref = _ctx_call_ref.set(call_ref)
     try:
-        yield str(call_ref)
+        yield
     finally:
-        _ctx_call_ref.reset(t_ref)
         _ctx_action_name.reset(t_action)
         _ctx_agent_id.reset(t_agent)
-        _log.debug("intercept_context_exited", agent_id=agent_id, action_name=action_name, call_ref=str(call_ref))
 
 
 async def _record(url: str, method: str, request_payload: dict[str, Any], raw: str) -> None:
@@ -56,8 +44,6 @@ async def _record(url: str, method: str, request_payload: dict[str, Any], raw: s
     if not agent_id or not action_name:
         return
 
-    call_ref = _ctx_call_ref.get()
-
     try:
         row_id = await add_intercept_row(
             url=url,
@@ -66,7 +52,6 @@ async def _record(url: str, method: str, request_payload: dict[str, Any], raw: s
             raw=raw,
             agent_id=agent_id,
             action_name=action_name,
-            call_ref=call_ref,
         )
     except Exception:
         _log.exception("intercept_record_failed", agent_id=agent_id, action_name=action_name)

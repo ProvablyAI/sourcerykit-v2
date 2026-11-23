@@ -6,12 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from sourcerykit.errors import SourceryKitStorageError, SourceryKitTrustError
-from sourcerykit.schemas import HandoffClaim, HandoffPayload
 from sourcerykit.trusted_endpoints.service import (
     insert_trusted_endpoint,
     is_endpoint_trusted,
     sanitize_and_extract_trusted_url,
-    verify_claim_endpoints,
 )
 
 _ORG = uuid.uuid4()
@@ -170,29 +168,3 @@ class TestInsertTrustedEndpoint:
 # ---------------------------------------------------------------------------
 # verify_claim_endpoints
 # ---------------------------------------------------------------------------
-
-
-class TestVerifyClaimEndpoints:
-    async def test_passes_when_all_source_urls_trusted(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            "sourcerykit.trusted_endpoints.service.is_endpoint_trusted",
-            AsyncMock(return_value=True),
-        )
-        payload = HandoffPayload(claims=[HandoffClaim(action_name="a", request_payload={"url": "https://api.ok.com"})])
-        await verify_claim_endpoints(payload)  # must not raise
-
-    async def test_raises_when_endpoint_not_trusted(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            "sourcerykit.trusted_endpoints.service.is_endpoint_trusted",
-            AsyncMock(return_value=False),
-        )
-        payload = HandoffPayload(claims=[HandoffClaim(action_name="a", request_payload={"url": "https://bad.com"})])
-        with pytest.raises((ValueError, SourceryKitTrustError, SourceryKitStorageError)):
-            await verify_claim_endpoints(payload)
-
-    async def test_empty_claims_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            "sourcerykit.trusted_endpoints.service.is_endpoint_trusted",
-            AsyncMock(return_value=True),
-        )
-        await verify_claim_endpoints(HandoffPayload())  # must not raise

@@ -46,18 +46,14 @@ dependencies = [
     "httpx>=0.26",
     "aiohttp>=3.9",
     "requests >=2.34",
-    "jsonschema>=4.0",
     "psycopg[binary]>=3.1",
     "provably-sdk>=0.3.4,<1",
     "pydantic>=2.6",
     "python-dotenv>=1.2",
     "sqlalchemy>=2.0",
     "structlog>=24.1",
-    "msgspec>=0.18.0",
     "questionary >= 2.1",
     "typer >= 0.26",
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.34",
 ]
 
 [project.optional-dependencies]
@@ -70,7 +66,6 @@ dev = [
     "build>=1.2",
     "mypy>=1.10",
     "pre-commit>=4.0",
-    "types-jsonschema>=4.0",
     "types-requests>=2.31",
     "openai-agents>=0.0.3",
     "bump-my-version>=0.30",
@@ -112,9 +107,6 @@ known-first-party = ["sourcerykit"]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
 asyncio_mode = "auto"
-markers = [
-    "e2e: end-to-end tests that drive the SDK against a real loopback HTTP server",
-]
 
 [tool.mypy]
 python_version = "3.12"

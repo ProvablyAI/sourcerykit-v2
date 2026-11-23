@@ -63,7 +63,6 @@ class Settings:
     schema_id: uuid.UUID | None = None
     table_id: uuid.UUID | None = None
     collection_id: uuid.UUID | None = None
-    integration_key: str | None = None
 
     def __post_init__(self) -> None:
         """Validate required fields after initialization."""
@@ -82,11 +81,7 @@ class Settings:
     @property
     def has_bootstrap_ids(self) -> bool:
         """Return True if all bootstrap resource IDs are present."""
-        return all(
-            getattr(self, f.name)
-            for f in dataclasses.fields(self)
-            if f.name.endswith("_id") or f.name == "integration_key"
-        )
+        return all(getattr(self, f.name) for f in dataclasses.fields(self) if f.name.endswith("_id"))
 
 
 @functools.lru_cache(maxsize=1)
@@ -205,7 +200,6 @@ def get_settings() -> Settings:
         schema_id=_opt_uuid("SOURCERYKIT_SCHEMA_ID", "SOURCERYKIT_SCHEMA_ID"),
         table_id=_opt_uuid("SOURCERYKIT_TABLE_ID", "SOURCERYKIT_TABLE_ID"),
         collection_id=_opt_uuid("SOURCERYKIT_COLLECTION_ID", "SOURCERYKIT_COLLECTION_ID"),
-        integration_key=_local_resolve("SOURCERYKIT_INTEGRATION_KEY", "SOURCERYKIT_INTEGRATION_KEY") or None,
     )
 
 

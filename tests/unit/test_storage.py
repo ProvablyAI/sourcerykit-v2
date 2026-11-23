@@ -79,7 +79,6 @@ class TestAddInterceptRow:
             patch("sourcerykit.intercept._storage.is_self_egress", return_value=False),
             patch("sourcerykit.intercept._storage.is_endpoint_trusted", AsyncMock(return_value=True)),
             patch("sourcerykit.intercept._storage.get_engine", return_value=engine),
-            patch("sourcerykit.handoff._preprocess.run_preprocess", AsyncMock()),
         ):
             result = await add_intercept_row(
                 url="https://trusted.com",

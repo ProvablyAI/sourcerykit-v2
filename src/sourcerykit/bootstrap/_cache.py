@@ -1,4 +1,4 @@
-"""Provably bootstrap: middleware + database + collection + integration."""
+"""Provably bootstrap: middleware + database + collection."""
 
 from __future__ import annotations
 
@@ -26,7 +26,6 @@ class ProvablyBootstrapCache:
     schema_id: UUID | None = field(default=None)
     table_id: UUID | None = field(default=None)
     collection_id: UUID | None = field(default=None)
-    integration_key: str | None = field(default=None)
     collection_name: str | None = field(default=None)
 
     def load_from(self, settings: Settings) -> None:
@@ -36,7 +35,6 @@ class ProvablyBootstrapCache:
         self.schema_id = settings.schema_id
         self.table_id = settings.table_id
         self.collection_id = settings.collection_id
-        self.integration_key = settings.integration_key
         self.collection_name = settings.project_name or None
 
     async def run_handshake(self, project_name: str) -> None:
@@ -55,7 +53,6 @@ class ProvablyBootstrapCache:
 
             self.collection_name = project_name
             self.collection_id = await self._resolve_collection(project_name)
-            self.integration_key = await self._resolve_integration_key()
         # ProvablyError comes from provably-sdk, so it is not a SourceryKitError.
         except (SourceryKitError, ProvablyError):
             raise
@@ -111,12 +108,6 @@ class ProvablyBootstrapCache:
             except Exception as e:
                 _log.error("collection_creation_failed", error=str(e))
                 raise
-
-    async def _resolve_integration_key(self) -> str:
-        if self.collection_id is None:
-            raise SourceryKitBootstrapError("collection_id is not set; _resolve_collection() must succeed first")
-        _, key = await service.ensure_integration(self.collection_id, name=INTERCEPTS_TABLE)
-        return key
 
 
 # Module-level singleton.

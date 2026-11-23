@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any
 from urllib.parse import urlparse
 
@@ -14,7 +13,6 @@ from sourcerykit.db._trusted_endpoints import (
 )
 from sourcerykit.errors import SourceryKitStorageError, SourceryKitTrustError
 from sourcerykit.logger import get_logger
-from sourcerykit.schemas.handoff import HandoffPayload
 from sourcerykit.utils.validation import validate_length
 
 _log = get_logger(__name__)
@@ -123,15 +121,6 @@ async def list_all_trusted_endpoints_detailed() -> list[dict[str, Any]]:
     return detailed_list
 
 
-async def list_all_trusted_endpoints() -> list[str]:
-    """
-    Return all active trusted endpoints urls.
-    """
-
-    urls = await list_all_trusted_endpoints_detailed()
-    return [ep["url"] for ep in urls]
-
-
 async def remove_trusted_endpoint(*, url: str) -> None:
     """Remove an active trusted endpoint for the configured org."""
 
@@ -154,33 +143,3 @@ async def remove_trusted_endpoint(*, url: str) -> None:
     except Exception as e:
         _log.error("remove_trusted_endpoint_db_error", url=clean_url, error=str(e))
         raise SourceryKitStorageError("Failed to remove trusted endpoint") from e
-
-
-async def verify_claim_endpoints(
-    payload: HandoffPayload,
-) -> None:
-    """
-    Validates that all URLs within the payload claims are authorized prefixes.
-
-    Raises:
-        ValueError: If one or more endpoint URLs fail the authorization guard.
-    """
-
-    # Extract and clean unique claim URLs
-    claim_urls = {claim.request_payload["url"].strip() for claim in payload.claims if claim.request_payload.get("url")}
-
-    if not claim_urls:
-        return
-
-    # Check authorization for all URLs
-    results = await asyncio.gather(*(is_endpoint_trusted(url) for url in claim_urls))
-
-    # Filter out the failures
-    untrusted_found = [url for url, is_authorized in zip(claim_urls, results) if not is_authorized]
-
-    # Raise an exception if any unauthorized endpoints were caught
-    if untrusted_found:
-        _log.warning("trust_gate_failed", untrusted_urls=untrusted_found)
-        raise SourceryKitTrustError(f"handoff has untrusted endpoints: {', '.join(untrusted_found)}")
-
-    _log.info("trust_gate_passed", url_count=len(claim_urls))

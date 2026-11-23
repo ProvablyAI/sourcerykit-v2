@@ -21,7 +21,7 @@ RESPONSE = json.dumps({"city": "Rome", "temperature": 14, "humidity": 68, "unit"
 
 
 async def _record_one() -> None:
-    await interceptor._record("https://api.example/weather", "GET", {}, {})
+    await interceptor._record("https://api.example/weather", "GET", {}, "{}")
 
 
 async def test_run_collects_the_calls_recorded_inside_it_and_in_its_tasks() -> None:
@@ -111,7 +111,7 @@ def test_outcome(verdicts: list[str], outcome: Outcome) -> None:
     results = [
         verify_module.ClaimResult(
             claim=Claim.model_validate({"text": "x", "unsupported": "no data"}),
-            verdict=verdict,  # type: ignore[arg-type]
+            verdict=verdict,
             queries={},
         )
         for verdict in verdicts

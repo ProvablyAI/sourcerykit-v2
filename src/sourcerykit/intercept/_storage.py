@@ -25,7 +25,6 @@ async def add_intercept_row(
     raw: str,
     agent_id: str,
     action_name: str,
-    call_ref: UUID | None = None,
 ) -> UUID | None:
     # Validate identifiers that map to VARCHAR DB columns
     validate_length("agent_id", agent_id, max_len=255)
@@ -46,7 +45,6 @@ async def add_intercept_row(
         request_payload,
         raw,
         hash_payload(raw),
-        call_ref=call_ref,
     )
 
     async with engine.begin() as conn:
@@ -54,8 +52,4 @@ async def add_intercept_row(
         row = result.fetchone()
 
     _log.info("intercept_stored", agent_id=agent_id, action_name=action_name, url=url, method=method)
-    from sourcerykit.handoff._preprocess import run_preprocess  # noqa: PLC0415
-
-    await run_preprocess()
-
     return row[0] if row else None

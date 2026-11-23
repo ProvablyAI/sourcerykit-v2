@@ -74,11 +74,7 @@ def _check_bootstrap_ids(settings: Settings) -> tuple[bool, str]:
     if settings.has_bootstrap_ids:
         return True, "All bootstrap IDs present"
 
-    missing = [
-        f.name
-        for f in dataclasses.fields(settings)
-        if (f.name.endswith("_id") or f.name == "integration_key") and not getattr(settings, f.name)
-    ]
+    missing = [f.name for f in dataclasses.fields(settings) if f.name.endswith("_id") and not getattr(settings, f.name)]
     return False, f"Missing: {', '.join(missing)} — run 'sourcerykit doctor --fix'"
 
 
@@ -112,17 +108,6 @@ async def _deep_check_collection_and_ids(settings: Settings) -> tuple[bool, str]
     return True, f"Collection '{settings.project_name}' verified (middleware, db, schema, table, collection)"
 
 
-async def _deep_check_integration(settings: Settings) -> tuple[bool, str]:
-    """Verify integration_key has the expected format (API key, not UUID)."""
-    if not settings.integration_key:
-        return False, "SOURCERYKIT_INTEGRATION_KEY is missing — run 'sourcerykit doctor --fix'"
-
-    if not settings.integration_key.startswith("i-"):
-        return False, f"SOURCERYKIT_INTEGRATION_KEY has unexpected format: {settings.integration_key!r}"
-
-    return True, "Integration key format valid"
-
-
 def _run_deep_check_collection_and_ids(settings: Settings) -> tuple[bool, str]:
     try:
         return asyncio.run(_deep_check_collection_and_ids(settings))
@@ -132,17 +117,6 @@ def _run_deep_check_collection_and_ids(settings: Settings) -> tuple[bool, str]:
         return False, "Cannot reach Provably API (network error)"
     except Exception as e:
         return False, f"Collection check failed: {e}"
-
-
-def _run_deep_check_integration(settings: Settings) -> tuple[bool, str]:
-    try:
-        return asyncio.run(_deep_check_integration(settings))
-    except ProvablyUnauthorizedError:
-        return False, "Session expired — run 'sourcerykit init'"
-    except ProvablyConnectionError:
-        return False, "Cannot reach Provably API (network error)"
-    except Exception as e:
-        return False, f"Integration check failed: {e}"
 
 
 def run_doctor(fix: bool = False) -> None:
@@ -162,7 +136,6 @@ def run_doctor(fix: bool = False) -> None:
         ("Project name", lambda: _check_project_name(settings)),
         ("Bootstrap IDs", lambda: _check_bootstrap_ids(settings)),
         ("Collection + IDs", lambda: _run_deep_check_collection_and_ids(settings)),
-        ("Integration", lambda: _run_deep_check_integration(settings)),
     ]
 
     passed = 0

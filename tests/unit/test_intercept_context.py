@@ -1,14 +1,10 @@
 """Tests for sourcerykit.intercept.interceptor — async_intercept_context and related helpers."""
 
-import uuid
-from unittest.mock import patch
-
 import pytest
 
 from sourcerykit.intercept.interceptor import (
     _ctx_action_name,
     _ctx_agent_id,
-    _ctx_call_ref,
     async_intercept_context,
 )
 
@@ -73,70 +69,3 @@ class TestAsyncInterceptContext:
         await asyncio.gather(task_a(), task_b())
         assert results["a"] == "agent-a"
         assert results["b"] == "agent-b"
-
-
-# ---------------------------------------------------------------------------
-# call_ref (UUID string yielded by async_intercept_context)
-# ---------------------------------------------------------------------------
-
-
-class TestCallRef:
-    async def test_yields_uuid_string(self) -> None:
-        async with async_intercept_context(agent_id="a", action_name="b") as ref:
-            assert isinstance(ref, str)
-            uuid.UUID(ref)  # must be valid UUID
-
-    async def test_call_ref_unique_per_invocation(self) -> None:
-        refs: list[str] = []
-        async with async_intercept_context(agent_id="a", action_name="b") as ref1:
-            refs.append(ref1)
-        async with async_intercept_context(agent_id="a", action_name="b") as ref2:
-            refs.append(ref2)
-        assert refs[0] != refs[1]
-
-    async def test_call_ref_contextvar_set_inside_block(self) -> None:
-        async with async_intercept_context(agent_id="a", action_name="b") as ref:
-            assert str(_ctx_call_ref.get()) == ref
-
-    async def test_call_ref_contextvar_resets_after_exit(self) -> None:
-        async with async_intercept_context(agent_id="a", action_name="b"):
-            pass
-        assert _ctx_call_ref.get() is None
-
-    async def test_call_ref_isolation_across_concurrent_tasks(self) -> None:
-        import asyncio
-
-        refs: dict[str, str] = {}
-
-        async def task_a() -> None:
-            async with async_intercept_context(agent_id="a", action_name="act") as ref:
-                await asyncio.sleep(0)
-                refs["a"] = ref
-
-        async def task_b() -> None:
-            async with async_intercept_context(agent_id="b", action_name="act") as ref:
-                await asyncio.sleep(0)
-                refs["b"] = ref
-
-        await asyncio.gather(task_a(), task_b())
-        assert refs["a"] != refs["b"]
-
-
-# ---------------------------------------------------------------------------
-# init_interceptor
-# ---------------------------------------------------------------------------
-
-
-class TestInitInterceptor:
-    def test_installs_hooks_without_error(self) -> None:
-        with (
-            patch("sourcerykit.intercept.interceptor.init_httpx_hooks") as mock_httpx,
-            patch("sourcerykit.intercept.interceptor.init_aiohttp_hooks") as mock_aiohttp,
-            patch("sourcerykit.intercept.interceptor.init_requests_hooks") as mock_requests,
-        ):
-            from sourcerykit.intercept.interceptor import init_interceptor
-
-            init_interceptor()
-            mock_httpx.assert_called_once()
-            mock_aiohttp.assert_called_once()
-            mock_requests.assert_called_once()

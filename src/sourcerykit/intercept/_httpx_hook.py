@@ -66,7 +66,11 @@ def _httpx_request_to_payload(req: httpx.Request) -> tuple[str, str, dict[str, A
     if params := dict(req.url.params):
         kwargs["params"] = params
 
-    if body := req.content:
+    try:
+        body = req.content
+    except httpx.RequestNotRead:  # a streamed body, such as a multipart upload: sent, but not kept
+        body = b""
+    if body:
         text = body.decode(errors="replace")
         if "application/json" in req.headers.get("content-type", ""):
             try:
