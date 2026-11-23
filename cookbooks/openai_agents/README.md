@@ -1,53 +1,65 @@
 # OpenAI Agents SDK
 
-This example demonstrates how to integrate SourceryKit with the [OpenAI Agents SDK](https://github.com/openai/openai-agents-python). It showcases automated intercept capture, target endpoint allow-list constraints, and runtime evaluation loops inside a structured agent execution flow.
+This example verifies the answer of an agent built with the [OpenAI Agents SDK](https://github.com/openai/openai-agents-python). The agent looks up the weather in London on Open-Meteo and answers in plain text; SourceryKit checks every statement of that answer against what Open-Meteo actually returned.
 
 ## How It Works
-1. **HTTP Interception**: The `bootstrap_system()` hook dynamically monitors outbound `httpx` calls, ensuring that network operations generated within the agent tool loop (`get_current_temperature_london`) are securely logged to your database intercepts table.
-2. **All-Method Trust Gate**: SourceryKit enforces structural target validation checks against your external network endpoints. The external weather lookup endpoint (`api.open-meteo.com`) is explicitly registered via policy seeds (`insert_trusted_endpoint`) before execution.
-3. **Automated Handoff & Evaluation**: Captured network states are bundled alongside the agent's structured `SourceryKitAgentResponse` output. The agent is configured with `output_type=SourceryKitAgentResponse`, which enforces a typed contract—the LLM returns an `answer` string and a `claimed_values` list of `ClaimedValue` objects (each with a JSONPath `path` and extracted string `value`). These `claimed_values` are passed as the `claimed_value` field in the handoff payload and submitted to `evaluate_handoff` to verify data integrity and catch hallucinations.
+
+1. **Recording.** `bootstrap_system()` installs the HTTP interceptor. The tool makes its Open-Meteo request inside `async_intercept_context`, so the request and the raw response are stored in your database. The endpoint is allow-listed first with `insert_trusted_endpoint`: a call to an endpoint that is not on the list is refused.
+2. **The run.** The agent runs inside `async with run() as weather_run:`, which collects every call recorded during it, including calls made by the tasks the agent starts.
+3. **Verification.** `weather_run.verify(answer, complete=..., model=...)` turns the answer into claims with one call to a model (the linker), then runs each claim's queries on the recorded responses. The agent itself needs no special output format: its plain answer is what gets checked.
+
+The linker only writes how to check a statement ("the temperature field equals 14, in °C"); the verdict comes from the recorded data. Its claims are rejected when a number in the quoted statement is not the value being checked, when the tolerance is wider than half a unit of the stated value, or when the check could shift the recorded value. A number in the answer that no claim covers is listed as unchecked and makes the outcome `CAUGHT`, as does a number the recorded data does not hold: catching invented values is the point. A statement of words only that the data cannot check, such as "in London", is listed as not verifiable and leaves the answer passing, with notes for you to read.
+
+The report gives:
+
+| Field | Meaning |
+|---|---|
+| `outcome` | `PASS` if every statement matches the recorded data; `PASS_WITH_NOTES` if nothing is wrong but some statements (words, never numbers) have no data to check them, such as "in London"; `CAUGHT` if a statement is contradicted, or a number, time or date has no data behind it or is not checked; `ERROR` if no claim could be checked |
+| `claims` | Each claim's quote, verdict, and the SQL it ran with the recorded values; statements the data cannot check are listed as not verifiable |
+| `dropped` | Claims the linker wrote that were rejected, and why |
+| `unchecked` | Numbers, times and dates in the answer that no claim checks |
+| `extractor`, `reply` | The linker model and its reply, as received |
 
 ---
 
 ## Environment Configuration
-Before running the agent, run the interactive setup wizard to configure your SourceryKit project variables automatically:
+
+Run the interactive setup wizard to configure your SourceryKit project:
 
 ```bash
 sourcerykit init
 ```
 
 > [!IMPORTANT]
-> The wizard only configures **SOURCERYKIT_*** variables. It does **not** configure your LLM provider infrastructure keys (like `MODEL_URL` or `MODEL_API_KEY`). Those must still be set up separately in your environment.
-
-You will also need to set these LLM-provider variables manually:
+> The wizard only configures **SOURCERYKIT_*** variables. Set your LLM-provider variables separately:
 
 | Variable | Required | Description |
 |---|---|---|
-| `MODEL_URL` | **yes** | Base URL for the LLM provider (e.g., `https://openrouter.ai/api/v1`). |
-| `MODEL_API_KEY` | **yes** | API authentication token for the LLM provider. |
-| `MODEL_NAME` | **yes** | Model name (e.g., `openai/gpt-4o-mini`). |
+| `MODEL_URL` | **yes** | Base URL of an OpenAI-compatible provider (e.g., `https://openrouter.ai/api/v1`). |
+| `MODEL_API_KEY` | **yes** | API key for the provider. |
+| `MODEL_NAME` | **yes** | The agent's model (e.g., `openai/gpt-4o-mini`). |
+| `LINKER_MODEL` | no | The model that turns the answer into claims; defaults to `MODEL_NAME`. |
 
 ---
 
 ## Execution
 
-1. Install the SDK package:
+1. Install the packages:
    ```bash
-   pip install sourcerykit openai-agents python-dotenv httpx pydantic
+   pip install sourcerykit openai-agents python-dotenv httpx
    ```
-2. Export your LLM-provider keys into your current shell or place them in a local `.env` file:
+2. Export the LLM-provider variables, or put them in a local `.env` file:
    ```bash
    export MODEL_URL="https://openrouter.ai/api/v1"
    export MODEL_API_KEY="sk-or-..."
    export MODEL_NAME="openai/gpt-4o-mini"
+   export LINKER_MODEL="anthropic/claude-haiku-5.5"
    ```
 3. Run the example:
-      ```bash
-      # Standard Validation
-      python agent_run.py
+   ```bash
+   # An honest answer: PASS
+   python agent_run.py
 
-      # or
-
-      # Hallucination Simulation
-      python agent_run.py --tamper
+   # The agent is told to change the temperature: CAUGHT
+   python agent_run.py --tamper
    ```
