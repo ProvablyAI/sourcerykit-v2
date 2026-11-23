@@ -2,7 +2,8 @@
 Runnable demo: OpenAI Agents SDK + SourceryKit, verifying the agent's answer.
 
 The agent answers in plain text from an Open-Meteo weather lookup. SourceryKit records the
-lookup, then checks every statement of the answer against what Open-Meteo actually returned.
+lookup, then checks every statement of the answer against what Open-Meteo actually returned,
+with a proof for every value it relies on; anyone given the report can check those proofs.
 
 Run:
     python agent_run.py                # honest answer: PASS, or PASS_WITH_NOTES
@@ -19,7 +20,7 @@ from agents import Agent, Runner, function_tool, set_default_openai_api, set_def
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
-from sourcerykit import Report, async_intercept_context, bootstrap_system, insert_trusted_endpoint, run
+from sourcerykit import async_intercept_context, bootstrap_system, check, run
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(name)s [%(levelname)s] %(message)s")
@@ -53,20 +54,6 @@ async def get_current_weather_london() -> dict:
             return response.json()
 
 
-def print_report(report: Report) -> None:
-    print(f"\nOutcome: {report.outcome}   (claims by {report.extractor})")
-    for result in report.claims:
-        if result.claim.unsupported is not None:
-            print(f"  NOT VERIFIABLE {result.claim.text!r}  {result.claim.unsupported}")
-            continue
-        recorded = {name: answer for name, (_, answer) in result.queries.items()}
-        print(f"  {result.verdict.upper():14} {result.claim.text!r}  recorded: {recorded}")
-    for reason in report.dropped:
-        print(f"  DROPPED        {reason}")
-    for _, text in report.unchecked:
-        print(f"  UNCHECKED      {text!r}: no claim checks it")
-
-
 async def main(hallucinate: bool = False) -> None:
     # 1. Initialize SourceryKit: schema, handshake, HTTP interceptor
     await bootstrap_system()
@@ -76,10 +63,7 @@ async def main(hallucinate: bool = False) -> None:
     set_default_openai_client(client, use_for_tracing=False)
     set_default_openai_api("chat_completions")
 
-    # 3. Allow-list the endpoint the tool calls
-    await insert_trusted_endpoint(url=_OPEN_METEO_BASE_URL)
-
-    # 4. Run the agent inside a SourceryKit run, which collects the calls its tools make
+    # 3. Run the agent inside a SourceryKit run, which collects the calls its tools make
     instructions = "You are a weather assistant. Call the get_current_weather_london tool, then answer the user."
     prompt = "What is the weather in London right now?"
     if hallucinate:
@@ -93,14 +77,18 @@ async def main(hallucinate: bool = False) -> None:
         result = await Runner.run(agent, prompt)
     print(f"\nAgent answer: {result.final_output}")
 
-    # 5. Verify the answer: the linker model turns it into claims, checked on the recorded data
+    # 4. Verify the answer: the linker model turns it into claims, proven on the recorded data
     async def complete(messages: list[dict[str, str]]) -> str:
         reply = await client.chat.completions.create(model=_LINKER_MODEL, messages=messages, temperature=0)
         return reply.choices[0].message.content or ""
 
     print("Verifying the answer...")
     report = await weather_run.verify(result.final_output, complete=complete, model=_LINKER_MODEL)
-    print_report(report)
+    print(f"\n{report}")
+
+    # 5. Check the report as whoever receives it would: its proofs, claims and verdicts
+    problems = await check(report)
+    print("\nReport check:", "every proof verifies" if not problems else "\n  ".join(["FAILED", *problems]))
 
 
 if __name__ == "__main__":

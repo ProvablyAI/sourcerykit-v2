@@ -4,20 +4,24 @@ This example verifies the answer of an agent built with the [OpenAI Agents SDK](
 
 ## How It Works
 
-1. **Recording.** `bootstrap_system()` installs the HTTP interceptor. The tool makes its Open-Meteo request inside `async_intercept_context`, so the request and the raw response are stored in your database. The endpoint is allow-listed first with `insert_trusted_endpoint`: a call to an endpoint that is not on the list is refused.
+1. **Recording.** `bootstrap_system()` installs the HTTP interceptor. The tool makes its Open-Meteo request inside `async_intercept_context`, so the request and the raw response are stored in your database.
 2. **The run.** The agent runs inside `async with run() as weather_run:`, which collects every call recorded during it, including calls made by the tasks the agent starts.
-3. **Verification.** `weather_run.verify(answer, complete=..., model=...)` turns the answer into claims with one call to a model (the linker), then runs each claim's queries on the recorded responses. The agent itself needs no special output format: its plain answer is what gets checked.
+3. **Verification.** `weather_run.verify(answer, complete=..., model=...)` turns the answer into claims with one call to a model (the linker). The recorded responses are sealed in your database's facts table, and every query a claim runs on them is proven by the qedb middleware. The agent itself needs no special output format: its plain answer is what gets checked. `print(report)` shows the outcome and each claim with its proven values.
+4. **Checking a report.** `check(report)` returns what is wrong with a report, or nothing. It sends every proof to Provably's public verifier, confirms each proof is for the query and answer the report shows, and recomputes the verdicts and the outcome. It needs no Provably account, so whoever receives the report can run it.
 
-The linker only writes how to check a statement ("the temperature field equals 14, in °C"); the verdict comes from the recorded data. Its claims are rejected when a number in the quoted statement is not the value being checked, when the tolerance is wider than half a unit of the stated value, or when the check could shift the recorded value. A statement the recorded data cannot check, such as "in London" or a UV index the response does not hold, is listed as not verifiable, and numbers that no claim covers are listed as unchecked: you read them in the report.
+Every call recorded in the run counts as evidence. If one of your tools calls a URL the model can influence, such as a generic "fetch this page" tool, list the endpoints you trust with `insert_trusted_endpoint` (or `sourcerykit endpoints add`): from then on, calls to any other endpoint are still recorded, but left out of verification and listed in the report as untrusted, so a page the model chose cannot back its own answer.
+
+The linker only writes how to check a statement ("the temperature field equals 14, in °C"); the verdict comes from the proven data. Its claims are rejected when a number in the quoted statement is not the value being checked, when the tolerance is wider than half a unit of the stated value, or when the check could shift the recorded value. A statement the recorded data cannot check, such as "in London" or a UV index the response does not hold, is listed as not verifiable, and numbers that no claim covers are listed as unchecked: you read them in the report.
 
 The report gives:
 
 | Field | Meaning |
 |---|---|
 | `outcome` | `CAUGHT` if a statement is contradicted by the recorded data; `PASS` if every statement matches it; `PASS_WITH_NOTES` if nothing is contradicted but some statements have no data to check them; `ERROR` if no claim could be checked |
-| `claims` | Each claim's quote, verdict, and the SQL it ran with the recorded values; statements the data cannot check are listed as not verifiable |
+| `claims` | Each claim's quote and verdict, and for each step its SQL, the proven answer and the proof; statements the data cannot check are listed as not verifiable |
 | `dropped` | Claims the linker wrote that were rejected, and why |
 | `unchecked` | Numbers, times and dates in the answer that no claim checks |
+| `untrusted` | Recorded calls left out of verification, when you have listed trusted endpoints and these are not among them |
 | `extractor`, `reply` | The linker model and its reply, as received |
 
 ---
