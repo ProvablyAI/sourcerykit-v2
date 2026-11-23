@@ -97,8 +97,25 @@ async def test_verify_normalises_the_answer() -> None:
     assert report.answer == "Café: 14°C.\n"
 
 
-@pytest.mark.parametrize("verdicts", [["supported", "unsupported"], ["unsupported"]])
-def test_outcome_is_caught_when_any_claim_is_unsupported(verdicts: list[str]) -> None:
-    claim = Claim.model_validate({"text": "x", "unsupported": "no data"})
-    results = [verify_module.ClaimResult(claim=claim, verdict=v, queries={}) for v in verdicts]  # type: ignore[arg-type]
-    assert verify_module._outcome(results) == Outcome.CAUGHT
+@pytest.mark.parametrize(
+    ("verdicts", "unchecked", "outcome"),
+    [
+        ([("14°C", "supported")], [], Outcome.PASS),
+        ([("14°C", "supported"), ("in London", "unsupported")], [], Outcome.PASS_WITH_NOTES),
+        ([("14°C", "supported"), ("feels like 7°C", "unsupported")], [], Outcome.CAUGHT),
+        ([("14°C", "supported"), ("in London", "unsupported")], [(30, "12")], Outcome.CAUGHT),
+        ([("14°C", "contradicted"), ("in London", "unsupported")], [], Outcome.CAUGHT),
+        ([("in London", "unsupported")], [(30, "12")], Outcome.ERROR),
+        ([], [], Outcome.ERROR),
+    ],
+)
+def test_outcome(verdicts: list[tuple[str, str]], unchecked: list[tuple[int, str]], outcome: Outcome) -> None:
+    results = [
+        verify_module.ClaimResult(
+            claim=Claim.model_validate({"text": text, "unsupported": "no data"}),
+            verdict=verdict,  # type: ignore[arg-type]
+            queries={},
+        )
+        for text, verdict in verdicts
+    ]
+    assert verify_module._outcome(results, unchecked) == outcome
