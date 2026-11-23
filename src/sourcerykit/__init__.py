@@ -13,9 +13,11 @@ from sourcerykit.intercept import async_intercept_context
 from sourcerykit.schemas import SourceryKitAgentResponse, VerificationMode
 from sourcerykit.testing import start_mock_server
 from sourcerykit.trusted_endpoints import insert_trusted_endpoint
+from sourcerykit.verify import Report, Run, run
 
 __all__ = [
     "bootstrap_system",
+    "run",
     "evaluate_handoff",
     "build_handoff_payload",
     "async_intercept_context",
@@ -24,6 +26,8 @@ __all__ = [
     # Types
     "VerificationMode",
     "SourceryKitAgentResponse",
+    "Run",
+    "Report",
     # Exceptions
     "SourceryKitError",
     "SourceryKitConfigError",

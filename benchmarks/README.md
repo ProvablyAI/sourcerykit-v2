@@ -45,8 +45,8 @@ One JSON file per case in `cases/`. Each claim has:
   `build_handoff_payload` groups them, so they share one verdict.
 - `v2_claim`: the claim a perfect extractor would write for it (`sourcerykit.claims.Claim`
   without `text`), or `null` for no verdict. A step's `call` is a call_ref, or the start of one.
-  These hand-written annotations are not scored as an engine; they are kept, and validated on
-  load, as training and reference data for the semantic parser. A stated unit or currency is
+  These hand-written annotations are reference data, validated on load and not scored as an
+  engine: what each statement means, as a claim. A stated unit or currency is
   checked against the response, and is `unsupported` when the response has none.
 
 A case either holds its own `calls` and `answer` (hand-written), or points to a frozen agent

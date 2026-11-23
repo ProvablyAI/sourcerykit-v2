@@ -5,7 +5,9 @@ from sqlalchemy import (
     Column,
     ForeignKey,
     Index,
+    Integer,
     MetaData,
+    Numeric,
     Table,
     Text,
     func,
@@ -139,3 +141,21 @@ trace_intercepts = Table(
 
 Index("ix_trace_intercepts_trace_id", trace_intercepts.c.trace_id)
 Index("ix_trace_intercepts_query_id", trace_intercepts.c.query_id)
+
+FACTS_TABLE = "facts"
+
+# The recorded responses of one verification, one row per JSON value (see sourcerykit.facts).
+# One table per project, emptied and refilled by each verification under a lock: the claims'
+# queries name it, and qedb proves queries on one table.
+facts = Table(
+    FACTS_TABLE,
+    metadata,
+    Column("call_ref", UUID(as_uuid=True), nullable=False),
+    Column("path", Text, nullable=False),
+    Column("pattern", Text, nullable=False),
+    Column("idx", Integer),
+    Column("obj", Text),
+    Column("type", Text, nullable=False),
+    Column("num", Numeric),
+    Column("text", Text),
+)

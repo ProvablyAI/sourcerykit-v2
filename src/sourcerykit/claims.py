@@ -20,7 +20,7 @@ import ast
 import operator
 import re
 from collections.abc import Callable
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_EVEN, Context, Decimal, DivisionByZero, InvalidOperation, Overflow, localcontext
 from typing import Any, Literal
 from uuid import UUID
 
@@ -46,6 +46,9 @@ _COMPARE = {
 }
 _ARITHMETIC = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv}
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# The checks' arithmetic, fixed here: Python's decimal context is per thread and the host
+# application may change it, which would change verdicts.
+_ARITHMETIC_CONTEXT = Context(prec=28, rounding=ROUND_HALF_EVEN, traps=[InvalidOperation, DivisionByZero, Overflow])
 
 Column = Literal["path", "pattern", "idx", "obj", "type", "num", "text"]
 
@@ -162,7 +165,8 @@ def verify(claim: Claim, query: Query, table: str = "facts") -> tuple[Verdict, d
             statement = sql(step, answers, table)
             answers[name] = _no_rows(step) if statement is None else query(statement)
             queries[name] = (statement, answers[name])
-        holds = all(_holds(check, answers) for check in claim.checks)
+        with localcontext(_ARITHMETIC_CONTEXT):
+            holds = all(_holds(check, answers) for check in claim.checks)
     except _Unresolved:
         holds = False
     return ("supported" if holds else "contradicted"), queries
@@ -179,7 +183,8 @@ def sql(step: Step, answers: dict[str, list[Any]], table: str = "facts") -> str 
         op, operand = _filter(value)
         ref = _step_ref(operand)
         if ref is not None:
-            operand = [v for v in answers[ref] if v is not None]
+            # Sorted: rows come back in no set order, and the same claim must give the same SQL.
+            operand = sorted({v for v in answers[ref] if v is not None}, key=str)
             if op != "in":
                 if not operand:
                     return None  # comparing with NULL selects nothing

@@ -1,5 +1,6 @@
 """Tests for sourcerykit.claims, running the compiled SQL on an in-memory SQLite facts table."""
 
+import decimal
 import json
 import sqlite3
 import uuid
@@ -239,3 +240,23 @@ class TestClaimShape:
         valid = _read(FLIGHTS, "$.airport", "=", "x")
         with pytest.raises(ValidationError):
             Claim.model_validate({"text": "-", **valid, **claim})
+
+
+def test_a_step_reused_in_in_gives_the_same_sql_whatever_the_row_order() -> None:
+    step = Step.model_validate({"call": WEATHER, "select": "min", "where": {"obj": {"in": {"step": "o"}}}})
+    one = sql(step, {"o": ["$.f[2]", "$.f[0]", "$.f[1]"]})
+    other = sql(step, {"o": ["$.f[1]", "$.f[2]", "$.f[0]", "$.f[1]"]})
+    assert one == other
+
+
+def test_check_arithmetic_ignores_the_host_decimal_context() -> None:
+    claim = Claim.model_validate(
+        {
+            "text": "a third is 0.3333",
+            "steps": {"one": {"call": WEATHER, "select": "num", "where": {"path": "$.one"}}},
+            "checks": [{"expr": "one / 3", "op": "approx", "value": 0.3333, "tol": 0.00005}],
+        }
+    )
+    query = sqlite_facts({WEATHER: {"one": 1}})
+    with decimal.localcontext(decimal.Context(prec=2)):  # a host that lowered the precision
+        assert verify(claim, query)[0] == "supported"

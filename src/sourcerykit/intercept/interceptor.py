@@ -18,6 +18,9 @@ _log = get_logger(__name__)
 _ctx_agent_id: ContextVar[str] = ContextVar("provably_agent_id", default="")
 _ctx_action_name: ContextVar[str] = ContextVar("provably_action_name", default="")
 _ctx_call_ref: ContextVar[UUID | None] = ContextVar("provably_call_ref", default=None)
+# Row ids of the calls recorded inside ``sourcerykit.run()``. A list, not a tuple: tasks the run
+# starts get a copy of the context, and must append to the same list.
+_ctx_run_calls: ContextVar[list[UUID] | None] = ContextVar("sourcerykit_run_calls", default=None)
 
 
 @asynccontextmanager
@@ -56,7 +59,7 @@ async def _record(url: str, method: str, request_payload: dict[str, Any], raw: d
     call_ref = _ctx_call_ref.get()
 
     try:
-        await add_intercept_row(
+        row_id = await add_intercept_row(
             url=url,
             method=method,
             request_payload=request_payload,
@@ -67,6 +70,10 @@ async def _record(url: str, method: str, request_payload: dict[str, Any], raw: d
         )
     except Exception:
         _log.exception("intercept_record_failed", agent_id=agent_id, action_name=action_name)
+        return
+    run_calls = _ctx_run_calls.get()
+    if run_calls is not None and row_id is not None:
+        run_calls.append(row_id)
 
 
 def init_interceptor() -> None:
