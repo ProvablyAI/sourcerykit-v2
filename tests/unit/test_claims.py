@@ -260,3 +260,23 @@ def test_check_arithmetic_ignores_the_host_decimal_context() -> None:
     query = sqlite_facts({WEATHER: {"one": 1}})
     with decimal.localcontext(decimal.Context(prec=2)):  # a host that lowered the precision
         assert verify(claim, query)[0] == "supported"
+
+
+@pytest.mark.parametrize(
+    ("stated", "verdict"),
+    [
+        ("2026-11-23 11:00", "supported"),  # the same moment, written with a space
+        ("2026-11-23T11:00:00", "supported"),
+        ("2026-11-23 12:00", "contradicted"),
+        ("11:00", "contradicted"),  # a time is not a date and time
+    ],
+)
+def test_dates_and_times_compare_as_moments(stated: str, verdict: str) -> None:
+    claim = Claim.model_validate(
+        {
+            "text": stated,
+            "steps": {"t": {"call": WEATHER, "select": "text", "where": {"path": "$.time"}}},
+            "checks": [{"expr": "t", "op": "=", "value": stated}],
+        }
+    )
+    assert verify(claim, sqlite_facts({WEATHER: {"time": "2026-11-23T11:00"}}))[0] == verdict

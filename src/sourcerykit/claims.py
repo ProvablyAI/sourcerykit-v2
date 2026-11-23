@@ -20,6 +20,7 @@ import ast
 import operator
 import re
 from collections.abc import Callable
+from datetime import datetime, time
 from decimal import ROUND_HALF_EVEN, Context, Decimal, DivisionByZero, InvalidOperation, Overflow, localcontext
 from typing import Any, Literal
 from uuid import UUID
@@ -309,6 +310,26 @@ def _evaluate(node: ast.expr, answers: dict[str, list[Any]]) -> Decimal:
         raise _Unresolved(f"cannot compute {ast.unparse(node)}") from None
 
 
+def _same_text(got: Any, want: Any) -> bool:
+    """Equal text, or the same date and time written two ISO ways ("2026-11-23 11:00" and
+    "2026-11-23T11:00", "11:00" and "11:00:00")."""
+    if got == want:
+        return True
+    if not (isinstance(got, str) and isinstance(want, str)):
+        return False
+    moments = (_moment(got), _moment(want))
+    return moments[0] is not None and moments[0] == moments[1]
+
+
+def _moment(text: str) -> datetime | time | None:
+    for parse in (datetime.fromisoformat, time.fromisoformat):
+        try:
+            return parse(text)
+        except ValueError:
+            pass
+    return None
+
+
 def _holds(check: Check, answers: dict[str, list[Any]]) -> bool:
     step = check.expr if _IDENTIFIER.fullmatch(check.expr) else None
     want = check.value
@@ -318,7 +339,7 @@ def _holds(check: Check, answers: dict[str, list[Any]]) -> bool:
         got = _single(answers[step])
         if isinstance(want, bool):
             want = "true" if want else "false"
-        return bool(got == want) == (check.op == "=")
+        return _same_text(got, want) == (check.op == "=")
     if step is not None:
         got = _number(_single(answers[step]))
     else:
