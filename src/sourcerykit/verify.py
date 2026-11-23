@@ -39,10 +39,8 @@ class ClaimResult(BaseModel):
 
 class Report(BaseModel):
     outcome: Outcome
-    """CAUGHT if a claim is contradicted or quotes a number, time or date the data does not back;
-    else ERROR if no claim is supported; else CAUGHT if a number, time or date is in no claim; else
-    PASS_WITH_NOTES if some claims state only words the data cannot check (the unsupported ones),
-    PASS if every claim is supported."""
+    """CAUGHT if any claim is contradicted; else ERROR if none is supported; else PASS_WITH_NOTES if
+    some have no data to check them (the unsupported ones), PASS if every claim is supported."""
     answer: str
     """The answer as verified: Unicode NFC, ``\\n`` line ends."""
     extractor: str
@@ -76,16 +74,15 @@ class Run:
         paths = {p for fact in rows for p in (fact.path, fact.pattern)}
         claims, dropped = linker.parse(answer, reply, [call_id for call_id, _, _ in recorded], paths)
         results = await _run_claims(claims, rows) if claims else []
-        skipped = linker.unchecked(answer, claims)
         return Report(
-            outcome=_outcome(results, skipped),
+            outcome=_outcome(results),
             answer=answer,
             extractor=f"linker:{model}",
             reply=reply,
             calls=[call_id for call_id, _, _ in recorded],
             claims=results,
             dropped=dropped,
-            unchecked=skipped,
+            unchecked=linker.unchecked(answer, claims),
         )
 
 
@@ -100,18 +97,13 @@ async def run() -> AsyncIterator[Run]:
         _ctx_run_calls.reset(token)
 
 
-def _outcome(results: list[ClaimResult], unchecked: list[tuple[int, str]]) -> Outcome:
-    # A stated number must be backed by the data: an unsupported claim quoting one counts as caught,
-    # so the linker cannot turn a wrong value into a note by calling it unsupported.
-    unsupported = [result.claim.text for result in results if result.verdict == "unsupported"]
-    states_a_number = any(linker.unchecked(text, []) for text in unsupported)
-    if states_a_number or any(result.verdict == "contradicted" for result in results):
+def _outcome(results: list[ClaimResult]) -> Outcome:
+    verdicts = {result.verdict for result in results}
+    if "contradicted" in verdicts:
         return Outcome.CAUGHT
-    if not any(result.verdict == "supported" for result in results):
+    if "supported" not in verdicts:
         return Outcome.ERROR
-    if unchecked:
-        return Outcome.CAUGHT
-    return Outcome.PASS_WITH_NOTES if unsupported else Outcome.PASS
+    return Outcome.PASS_WITH_NOTES if "unsupported" in verdicts else Outcome.PASS
 
 
 async def _load_calls(call_ids: list[UUID]) -> list[tuple[UUID, str, str]]:

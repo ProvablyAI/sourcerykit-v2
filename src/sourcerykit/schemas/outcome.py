@@ -6,6 +6,6 @@ class Outcome(StrEnum):
 
     PASS = "PASS"
     PASS_WITH_NOTES = "PASS_WITH_NOTES"
-    """Nothing is wrong, but some statements state no number and have no data to check them."""
+    """Nothing is contradicted, but some statements have no data to check them."""
     CAUGHT = "CAUGHT"
     ERROR = "ERROR"
