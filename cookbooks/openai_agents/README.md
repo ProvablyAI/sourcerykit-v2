@@ -8,13 +8,13 @@ This example verifies the answer of an agent built with the [OpenAI Agents SDK](
 2. **The run.** The agent runs inside `async with run() as weather_run:`, which collects every call recorded during it, including calls made by the tasks the agent starts.
 3. **Verification.** `weather_run.verify(answer, complete=..., model=...)` turns the answer into claims with one call to a model (the linker), then runs each claim's queries on the recorded responses. The agent itself needs no special output format: its plain answer is what gets checked.
 
-The linker only writes how to check a statement ("the temperature field equals 14, in °C"); the verdict comes from the recorded data. Its claims are rejected when a number in the quoted statement is not the value being checked, when the tolerance is wider than half a unit of the stated value, or when the check could shift the recorded value. A number in the answer that no claim covers is listed as unchecked and makes the outcome `CAUGHT`, as does a number the recorded data does not hold: catching invented values is the point. A statement of words only that the data cannot check, such as "in London", is listed as not verifiable and leaves the answer passing, with notes for you to read.
+The linker only writes how to check a statement ("the temperature field equals 14, in °C"); the verdict comes from the recorded data. Its claims are rejected when a number in the quoted statement is not the value being checked, when the tolerance is wider than half a unit of the stated value, or when the check could shift the recorded value. A statement the recorded data cannot check, such as "in London" or a UV index the response does not hold, is listed as not verifiable, and numbers that no claim covers are listed as unchecked: you read them in the report.
 
 The report gives:
 
 | Field | Meaning |
 |---|---|
-| `outcome` | `PASS` if every statement matches the recorded data; `PASS_WITH_NOTES` if nothing is wrong but some statements (words, never numbers) have no data to check them, such as "in London"; `CAUGHT` if a statement is contradicted, or a number, time or date has no data behind it or is not checked; `ERROR` if no claim could be checked |
+| `outcome` | `CAUGHT` if a statement is contradicted by the recorded data; `PASS` if every statement matches it; `PASS_WITH_NOTES` if nothing is contradicted but some statements have no data to check them; `ERROR` if no claim could be checked |
 | `claims` | Each claim's quote, verdict, and the SQL it ran with the recorded values; statements the data cannot check are listed as not verifiable |
 | `dropped` | Claims the linker wrote that were rejected, and why |
 | `unchecked` | Numbers, times and dates in the answer that no claim checks |
@@ -57,9 +57,11 @@ sourcerykit init
    ```
 3. Run the example:
    ```bash
-   # An honest answer: PASS
+   # An honest answer: PASS, or PASS_WITH_NOTES when it names London, which the response does not
    python agent_run.py
 
-   # The agent is told to change the temperature: CAUGHT
-   python agent_run.py --tamper
+   # Asked for the UV index and the chance of rain as well, which the response does not hold
+   python agent_run.py --hallucinate
    ```
+
+With `--hallucinate`, the agent is asked for values Open-Meteo did not return here and told to answer everything; nothing tells it to make anything up. Whether it invents them is up to the model: when it does, the invented values are listed as not verifiable; when it says they are not available, those statements are. With `openai/gpt-5-nano`, all 5 of our runs invented them.
