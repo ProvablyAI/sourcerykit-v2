@@ -4,10 +4,11 @@ Runs every case in benchmarks/cases/ offline against an engine and compares its
 verdict with the hand-labelled gold verdict. No network, no LLM, no backend: the
 recorded responses are frozen in the case files (or in the agent run they point to).
 
-    uv run python benchmarks/run.py          # both engines
-    uv run python benchmarks/run.py v1       # v1 only, no database needed
+    uv run python benchmarks/run.py                 # every engine
+    uv run python benchmarks/run.py v1              # v1 only, no database needed
+    uv run python benchmarks/run.py linker:<model>  # v2 on the claims a linker wrote (link.py)
 
-The v2 engine runs its queries on a PostgreSQL facts table, by default a local one:
+Linker engines run their queries on a PostgreSQL facts table, by default a local one:
 
     docker run -d --name sourcerykit-bench -e POSTGRES_PASSWORD=bench -p 55432:5432 postgres:17
 """
@@ -17,18 +18,20 @@ import os
 import sys
 import uuid
 from collections import Counter, defaultdict
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
 import psycopg
 
+from sourcerykit import linker
 from sourcerykit.claims import Claim, verify
 from sourcerykit.evaluator._eval_modes import evaluate_claim
-from sourcerykit.facts import flatten
+from sourcerykit.facts import Fact, flatten
 from sourcerykit.schemas import HandoffClaim, VerificationMode
 
 BENCH_DIR = Path(__file__).parent
+LINKS_DIR = BENCH_DIR / "links"
 GOLD = {"supported", "contradicted", "unsupported", "uncheckable"}
 BAD = {"contradicted", "unsupported"}  # claims a verifier must flag
 COLUMNS = ("correct", "false_pass", "false_caught", "missed", "abstained")
@@ -115,25 +118,13 @@ def v1_verdicts(cases: list[dict[str, Any]]) -> Verdicts:
             yield case, claim, run_v1(claim, responses)
 
 
-def v2_verdicts(cases: list[dict[str, Any]]) -> Verdicts:
-    """Each case's responses go into the facts table, then each claim's queries run on it."""
-    with psycopg.connect(DATABASE_URL, autocommit=True) as db:
-
-        def query(sql: str) -> list[Any]:
-            return [row[0] for row in db.execute(sql)]
-
-        for case in cases:
-            load_facts(db, case)
-            for claim in case["claims"]:
-                spec = claim.get("v2_claim")
-                verdict = None if spec is None else verify(spec, query)[0]
-                yield case, claim, "contradicted" if verdict == "unsupported" else verdict  # both are CAUGHT
-
-
-def load_facts(db: psycopg.Connection[Any], case: dict[str, Any], table: str = "facts") -> None:
-    """Replaces ``table`` with the facts of the case's responses."""
+def load_facts(
+    db: psycopg.Connection[Any], case: dict[str, Any], table: str = "facts"
+) -> list[tuple[uuid.UUID, list[Fact]]]:
+    """Replaces ``table`` with the facts of the case's responses; returns each call's facts."""
     db.execute(f"DROP TABLE IF EXISTS {table}")
     db.execute(f"CREATE TABLE {table} ({FACTS_COLUMNS})")
+    calls = []
     for call in case["calls"]:
         rows = flatten(_call_uuid(call["call_ref"]), json.dumps(call["response"]))
         assert rows is not None, f"{case['id']}: {call['call_ref']} has no facts"
@@ -142,12 +133,82 @@ def load_facts(db: psycopg.Connection[Any], case: dict[str, Any], table: str = "
                 f"INSERT INTO {table} VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
                 [(r.call_ref, r.path, r.pattern, r.idx, r.obj, r.type, r.num, r.text) for r in rows],
             )
+        calls.append((_call_uuid(call["call_ref"]), rows))
+    return calls
 
 
-ENGINES = {"v1": v1_verdicts, "v2": v2_verdicts}
+Claims = Callable[[dict[str, Any], list[tuple[uuid.UUID, list[Fact]]]], tuple[list[Claim], list[str]]]
 
 
-def report(engine: str, cases: list[dict[str, Any]], verdicts: Verdicts) -> None:
+def linker_claims(model: str) -> Claims:
+    """The claims the linker wrote for each case, in its frozen reply."""
+
+    def claims(case: dict[str, Any], calls: list[tuple[uuid.UUID, list[Fact]]]) -> tuple[list[Claim], list[str]]:
+        reply = json.loads((LINKS_DIR / model / f"{case['id']}.json").read_text())["reply"]
+        paths = {p for _, facts in calls for f in facts for p in (f.path, f.pattern)}
+        claims, errors = linker.parse(case["answer"], reply, [call for call, _ in calls], paths)
+        skipped = [f"UNCHECKED {text!r} at {at}" for at, text in linker.unchecked(case["answer"], claims)]
+        return claims, errors + skipped
+
+    return claims
+
+
+def claimed_verdicts(cases: list[dict[str, Any]], make_claims: Claims, notes: list[str]) -> Verdicts:
+    """v2 on claims an engine found in the answer: each statement gets the verdicts of the claims quoting it.
+
+    A claim may quote more than one statement ("departs at 09:40 and costs €99"). A bad statement
+    is caught if any claim overlapping it is. A good one is falsely caught only by a caught claim
+    that overlaps no bad statement, which its CAUGHT would otherwise be about. Claims overlapping
+    no statement, and malformed ones, go to ``notes``.
+    """
+    with psycopg.connect(DATABASE_URL, autocommit=True) as db:
+
+        def query(sql: str) -> list[Any]:
+            return [row[0] for row in db.execute(sql)]
+
+        for case in cases:
+            answer = case["answer"]
+            claims, errors = make_claims(case, load_facts(db, case))
+            notes.extend(
+                f"  {case['id']}: {error}" if error.startswith("UNCHECKED") else f"  MALFORMED  {case['id']}: {error}"
+                for error in errors
+            )
+            linked = [(_span(answer, c.text), c.text, verify(c, query)[0]) for c in claims]
+            statements = [(_span(answer, s["text"]), s) for s in case["claims"]]
+            bad = [span for span, s in statements if s["gold_verdict"] in BAD]
+            matched: set[int] = set()
+            for span, statement in statements:
+                over = [i for i, (s, _, _) in enumerate(linked) if _overlap(s, span)]
+                matched.update(over)
+                caught = [linked[i][0] for i in over if linked[i][2] != "supported"]
+                if not over:
+                    yield case, statement, None
+                elif statement["gold_verdict"] in BAD:
+                    yield case, statement, "contradicted" if caught else "supported"
+                elif any(not any(_overlap(c, b) for b in bad) for c in caught):
+                    yield case, statement, "contradicted"
+                else:
+                    yield case, statement, "supported"
+            notes.extend(
+                f"  EXTRA {verdict:12} {case['id']}: {text!r}"
+                for i, (_, text, verdict) in enumerate(linked)
+                if i not in matched
+            )
+
+
+def _span(answer: str, text: str) -> tuple[int, int]:
+    start = answer.index(text)
+    return start, start + len(text)
+
+
+def _overlap(a: tuple[int, int], b: tuple[int, int]) -> bool:
+    return a[0] < b[1] and b[0] < a[1]
+
+
+ENGINES = {"v1": v1_verdicts}
+
+
+def report(engine: str, cases: list[dict[str, Any]], verdicts: Verdicts, notes: list[str] | None = None) -> None:
     by_category: dict[str, Counter[str]] = defaultdict(Counter)
     problems: list[str] = []
     for case, claim, verdict in verdicts:
@@ -164,12 +225,21 @@ def report(engine: str, cases: list[dict[str, Any]], verdicts: Verdicts) -> None
     if problems:
         print("\nnot correct:")
         print("\n".join(problems))
+    if notes:
+        print("\nclaims that are malformed, or quote no gold statement:")
+        print("\n".join(notes))
 
 
 def main() -> int:
     cases = load_cases()
-    for engine in sys.argv[1:] or list(ENGINES):
-        report(engine, cases, ENGINES[engine](cases))
+    linkers = [f"linker:{path.name}" for path in sorted(LINKS_DIR.glob("*"))]
+    for engine in sys.argv[1:] or [*ENGINES, *linkers]:
+        notes: list[str] = []
+        if engine.startswith("linker:"):
+            make_claims = linker_claims(engine.removeprefix("linker:"))
+            report(engine, cases, claimed_verdicts(cases, make_claims, notes), notes)
+        else:
+            report(engine, cases, ENGINES[engine](cases))
         print()
     return 0
 

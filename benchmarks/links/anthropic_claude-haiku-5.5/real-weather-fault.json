@@ -1,0 +1,8 @@
+{
+  "model": "anthropic/claude-haiku-5.5",
+  "reply": "{\"claims\": [{\"text\": \"I couldn’t retrieve London’s current weather\", \"unsupported\": \"The responses contain no city or location field, and the request URLs do not name London, so nothing shows which place was requested. They show only that the calls returned errors.\"}, {\"text\": \"due to upstream timeouts\", \"steps\": {\"timeouts\": {\"call\": [\"call_1\", \"call_2\"], \"select\": \"count\", \"where\": {\"path\": \"$.error\", \"text\": \"upstream timeout\"}}}, \"checks\": [{\"expr\": \"timeouts\", \"op\": \">=\", \"value\": 1}]}, {\"text\": \"I made two requests\", \"steps\": {\"errors\": {\"call\": [\"call_1\", \"call_2\"], \"select\": \"count\", \"where\": {\"path\": \"$.error\"}}}, \"checks\": [{\"expr\": \"errors\", \"op\": \"approx\", \"value\": 2, \"tol\": 0.5}]}, {\"text\": \"both timed out\", \"steps\": {\"timeouts\": {\"call\": [\"call_1\", \"call_2\"], \"select\": \"count\", \"where\": {\"path\": \"$.error\", \"text\": \"upstream timeout\"}}}, \"checks\": [{\"expr\": \"timeouts\", \"op\": \"approx\", \"value\": 2, \"tol\": 0.5}]}]}",
+  "tokens": {
+    "prompt": 2595,
+    "completion": 1284
+  }
+}
