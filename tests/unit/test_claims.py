@@ -1,16 +1,16 @@
 """Tests for sourcerykit.claims, running the compiled SQL on an in-memory SQLite facts table."""
 
+import asyncio
 import decimal
 import json
 import sqlite3
 import uuid
-from collections.abc import Callable
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
-from sourcerykit.claims import Claim, Step, sql, verify
+from sourcerykit.claims import Claim, Query, Step, sql, verify
 from sourcerykit.facts import flatten
 
 FLIGHTS = uuid.uuid4()
@@ -44,7 +44,7 @@ RESPONSES = {
 }
 
 
-def sqlite_facts(responses: dict[uuid.UUID, Any]) -> Callable[[str], list[Any]]:
+def sqlite_facts(responses: dict[uuid.UUID, Any]) -> Query:
     """A query function on an in-memory SQLite facts table holding ``responses``."""
     db = sqlite3.connect(":memory:")
     db.execute("CREATE TABLE facts (call_ref, path, pattern, idx INTEGER, obj, type, num REAL, text)")
@@ -67,16 +67,20 @@ def sqlite_facts(responses: dict[uuid.UUID, Any]) -> Callable[[str], list[Any]]:
                 for r in rows
             ],
         )
-    return lambda statement: [row[0] for row in db.execute(statement)]
+
+    async def query(statement: str) -> list[Any]:
+        return [row[0] for row in db.execute(statement)]
+
+    return query
 
 
 @pytest.fixture(scope="module")
-def query() -> Callable[[str], list[Any]]:
+def query() -> Query:
     return sqlite_facts(RESPONSES)
 
 
 def _verdict(query: Any, claim: dict[str, Any]) -> str:
-    return verify(Claim.model_validate({"text": "-", **claim}), query)[0]
+    return asyncio.run(verify(Claim.model_validate({"text": "-", **claim}), query))[0]
 
 
 def _step(call: uuid.UUID, select: str, where: dict[str, Any]) -> dict[str, Any]:
@@ -123,7 +127,9 @@ class TestChains:
     def test_aggregate_over_related_objects(self, query: Any) -> None:
         price = _step(FLIGHTS, "min", {"pattern": "$.flights[*].price", "obj": {"in": {"step": "ba"}}})
         claim = {"steps": {"ba": BA, "low": price}, "checks": [{"expr": "low", "op": "=", "value": 140}]}
-        verdict, queries = verify(Claim.model_validate({"text": "The cheapest BA flight is 140", **claim}), query)
+        verdict, queries = asyncio.run(
+            verify(Claim.model_validate({"text": "The cheapest BA flight is 140", **claim}), query)
+        )
         assert verdict == "supported"
         assert queries["low"] == (
             f"SELECT MIN(num) FROM facts WHERE call_ref = '{FLIGHTS}' AND pattern = '$.flights[*].price'"
@@ -181,7 +187,7 @@ class TestChains:
                 "checks": [{"expr": "n", "op": "=", "value": 0}],
             }
         )
-        verdict, queries = verify(claim, query)
+        verdict, queries = asyncio.run(verify(claim, query))
         assert verdict == "supported"
         assert queries["low"] == (None, [None])
         assert (
@@ -219,7 +225,7 @@ class TestAcrossCalls:
 class TestClaimShape:
     def test_unsupported_claim_runs_no_query(self) -> None:
         claim = Claim.model_validate({"text": "at £140", "unsupported": "the response has no currency"})
-        assert verify(claim, lambda _: pytest.fail("no query expected")) == ("unsupported", {})
+        assert asyncio.run(verify(claim, lambda _: pytest.fail("no query expected"))) == ("unsupported", {})
 
     @pytest.mark.parametrize(
         "claim",
@@ -259,7 +265,7 @@ def test_check_arithmetic_ignores_the_host_decimal_context() -> None:
     )
     query = sqlite_facts({WEATHER: {"one": 1}})
     with decimal.localcontext(decimal.Context(prec=2)):  # a host that lowered the precision
-        assert verify(claim, query)[0] == "supported"
+        assert asyncio.run(verify(claim, query))[0] == "supported"
 
 
 @pytest.mark.parametrize(
@@ -279,4 +285,4 @@ def test_dates_and_times_compare_as_moments(stated: str, verdict: str) -> None:
             "checks": [{"expr": "t", "op": "=", "value": stated}],
         }
     )
-    assert verify(claim, sqlite_facts({WEATHER: {"time": "2026-11-23T11:00"}}))[0] == verdict
+    assert asyncio.run(verify(claim, sqlite_facts({WEATHER: {"time": "2026-11-23T11:00"}})))[0] == verdict

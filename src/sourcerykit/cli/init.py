@@ -95,8 +95,8 @@ def save_bootstrap_ids() -> None:
         SOURCERYKIT_MIDDLEWARE_ID=str(_BOOTSTRAP_INSTANCE.middleware_id),
         SOURCERYKIT_DATABASE_ID=str(_BOOTSTRAP_INSTANCE.database_id),
         SOURCERYKIT_SCHEMA_ID=str(_BOOTSTRAP_INSTANCE.schema_id),
-        SOURCERYKIT_TABLE_ID=str(_BOOTSTRAP_INSTANCE.table_id),
-        SOURCERYKIT_COLLECTION_ID=str(_BOOTSTRAP_INSTANCE.collection_id),
+        SOURCERYKIT_FACTS_TABLE_ID=str(_BOOTSTRAP_INSTANCE.facts_table_id),
+        SOURCERYKIT_FACTS_COLLECTION_ID=str(_BOOTSTRAP_INSTANCE.facts_collection_id),
     )
 
 
@@ -284,7 +284,7 @@ def _execute_post_auth_phases(
     console.print(" Local config (.env):")
     console.print(f"   SOURCERYKIT_PROJECT_NAME    = {project_name}")
     console.print(f"   SOURCERYKIT_POSTGRES_URL    = {mask_postgres_url(postgres_url)}")
-    console.print(f"   SOURCERYKIT_COLLECTION_ID   = {_BOOTSTRAP_INSTANCE.collection_id}\n")
+    console.print(f"   SOURCERYKIT_FACTS_COLLECTION_ID = {_BOOTSTRAP_INSTANCE.facts_collection_id}\n")
     return True
 
 

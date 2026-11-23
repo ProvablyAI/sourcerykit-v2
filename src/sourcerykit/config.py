@@ -61,8 +61,8 @@ class Settings:
     middleware_id: uuid.UUID | None = None
     database_id: uuid.UUID | None = None
     schema_id: uuid.UUID | None = None
-    table_id: uuid.UUID | None = None
-    collection_id: uuid.UUID | None = None
+    facts_table_id: uuid.UUID | None = None
+    facts_collection_id: uuid.UUID | None = None
 
     def __post_init__(self) -> None:
         """Validate required fields after initialization."""
@@ -198,8 +198,8 @@ def get_settings() -> Settings:
         middleware_id=_opt_uuid("SOURCERYKIT_MIDDLEWARE_ID", "SOURCERYKIT_MIDDLEWARE_ID"),
         database_id=_opt_uuid("SOURCERYKIT_DATABASE_ID", "SOURCERYKIT_DATABASE_ID"),
         schema_id=_opt_uuid("SOURCERYKIT_SCHEMA_ID", "SOURCERYKIT_SCHEMA_ID"),
-        table_id=_opt_uuid("SOURCERYKIT_TABLE_ID", "SOURCERYKIT_TABLE_ID"),
-        collection_id=_opt_uuid("SOURCERYKIT_COLLECTION_ID", "SOURCERYKIT_COLLECTION_ID"),
+        facts_table_id=_opt_uuid("SOURCERYKIT_FACTS_TABLE_ID", "SOURCERYKIT_FACTS_TABLE_ID"),
+        facts_collection_id=_opt_uuid("SOURCERYKIT_FACTS_COLLECTION_ID", "SOURCERYKIT_FACTS_COLLECTION_ID"),
     )
 
 

@@ -10,7 +10,7 @@ from provably.service import service
 
 from sourcerykit.config import Settings
 from sourcerykit.db._engine import get_connection_info
-from sourcerykit.db._schema import INTERCEPTS_TABLE
+from sourcerykit.db._schema import FACTS_TABLE
 from sourcerykit.errors import SourceryKitBootstrapError, SourceryKitError
 from sourcerykit.logger import get_logger
 
@@ -24,18 +24,16 @@ class ProvablyBootstrapCache:
     middleware_id: UUID | None = field(default=None)
     database_id: UUID | None = field(default=None)
     schema_id: UUID | None = field(default=None)
-    table_id: UUID | None = field(default=None)
-    collection_id: UUID | None = field(default=None)
-    collection_name: str | None = field(default=None)
+    facts_table_id: UUID | None = field(default=None)
+    facts_collection_id: UUID | None = field(default=None)
 
     def load_from(self, settings: Settings) -> None:
         """Populate cache from pre-resolved settings."""
         self.middleware_id = settings.middleware_id
         self.database_id = settings.database_id
         self.schema_id = settings.schema_id
-        self.table_id = settings.table_id
-        self.collection_id = settings.collection_id
-        self.collection_name = settings.project_name or None
+        self.facts_table_id = settings.facts_table_id
+        self.facts_collection_id = settings.facts_collection_id
 
     async def run_handshake(self, project_name: str) -> None:
         """Resolve or create all required Provably resources."""
@@ -46,13 +44,12 @@ class ProvablyBootstrapCache:
             self.database_id = await self._resolve_database(connection_info)
 
             ids = await service.get_database_schema_id_and_table_id(
-                self.middleware_id, connection_info, table_name=INTERCEPTS_TABLE
+                self.middleware_id, connection_info, table_name=FACTS_TABLE
             )
             self.schema_id = ids["schema_id"]
-            self.table_id = ids["table_id"]
+            self.facts_table_id = ids["table_id"]
 
-            self.collection_name = project_name
-            self.collection_id = await self._resolve_collection(project_name)
+            self.facts_collection_id = await self._resolve_collection(facts_collection_name(project_name))
         # ProvablyError comes from provably-sdk, so it is not a SourceryKitError.
         except (SourceryKitError, ProvablyError):
             raise
@@ -84,30 +81,37 @@ class ProvablyBootstrapCache:
                 _log.error("database_creation_failed", error=str(e))
                 raise
 
-    async def _resolve_collection(self, project_name: str) -> UUID:
-        if self.middleware_id is None or self.database_id is None or self.schema_id is None or self.table_id is None:
+    async def _resolve_collection(self, name: str) -> UUID:
+        table_id = self.facts_table_id
+        if self.middleware_id is None or self.database_id is None or self.schema_id is None or table_id is None:
             raise SourceryKitBootstrapError(
-                "middleware_id, database_id, schema_id, and table_id must all be resolved before creating a collection"
+                "middleware_id, database_id, schema_id, and facts_table_id must all be resolved before creating a "
+                "collection"
             )
         try:
-            return await service.get_collection_id(name=project_name)
+            return await service.get_collection_id(name=name)
         except (ProvablyError, ValueError):
             _log.info("collection_not_found_creating_new")
             try:
                 columns = await service.get_columns_from_database(
-                    self.middleware_id, self.database_id, self.schema_id, self.table_id
+                    self.middleware_id, self.database_id, self.schema_id, table_id
                 )
                 return await service.create_collection(
                     self.middleware_id,
                     self.database_id,
                     self.schema_id,
-                    self.table_id,
+                    table_id,
                     columns,
-                    name=project_name,
+                    name=name,
                 )
             except Exception as e:
                 _log.error("collection_creation_failed", error=str(e))
                 raise
+
+
+def facts_collection_name(project_name: str) -> str:
+    """The project's collection of proven queries on its facts table."""
+    return f"{project_name}-facts"
 
 
 # Module-level singleton.

@@ -8,11 +8,12 @@ from provably import ProvablyConnectionError, ProvablyUnauthorizedError
 from provably.auth_service import auth_service
 from provably.service import service
 
+from sourcerykit.bootstrap._cache import facts_collection_name
 from sourcerykit.cli.init import run_full_bootstrap
 from sourcerykit.cli.utils import console, mask_postgres_url, run_connectivity_check
 from sourcerykit.config import Settings, get_settings
 from sourcerykit.db._engine import get_connection_info
-from sourcerykit.db._schema import INTERCEPTS_TABLE
+from sourcerykit.db._schema import FACTS_TABLE
 
 
 def _check_token_and_org(settings: Settings) -> tuple[bool, str]:
@@ -94,18 +95,19 @@ async def _deep_check_collection_and_ids(settings: Settings) -> tuple[bool, str]
         return False, f"Database mismatch (local={settings.database_id}, remote={remote_db})"
 
     ids = await service.get_database_schema_id_and_table_id(
-        settings.middleware_id, connection_info, table_name=INTERCEPTS_TABLE
+        settings.middleware_id, connection_info, table_name=FACTS_TABLE
     )
     if ids["schema_id"] != settings.schema_id:
         return False, f"Schema mismatch (local={settings.schema_id}, remote={ids['schema_id']})"
-    if ids["table_id"] != settings.table_id:
-        return False, f"Table mismatch (local={settings.table_id}, remote={ids['table_id']})"
+    if ids["table_id"] != settings.facts_table_id:
+        return False, f"Table mismatch (local={settings.facts_table_id}, remote={ids['table_id']})"
 
-    remote_col = await service.get_collection_id(settings.project_name)
-    if remote_col != settings.collection_id:
-        return False, f"Collection mismatch (local={settings.collection_id}, remote={remote_col})"
+    name = facts_collection_name(settings.project_name)
+    remote_col = await service.get_collection_id(name)
+    if remote_col != settings.facts_collection_id:
+        return False, f"Collection mismatch (local={settings.facts_collection_id}, remote={remote_col})"
 
-    return True, f"Collection '{settings.project_name}' verified (middleware, db, schema, table, collection)"
+    return True, f"Collection '{name}' verified (middleware, db, schema, table, collection)"
 
 
 def _run_deep_check_collection_and_ids(settings: Settings) -> tuple[bool, str]:

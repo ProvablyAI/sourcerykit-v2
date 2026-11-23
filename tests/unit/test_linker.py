@@ -11,13 +11,13 @@ from tests.unit.test_claims import sqlite_facts
 REF = uuid.uuid4()
 
 
-def test_prompt_example_claims_check_out_on_its_response() -> None:
+async def test_prompt_example_claims_check_out_on_its_response() -> None:
     """The worked example in the prompt must itself be valid and give the verdicts it teaches."""
     reply = json.dumps({"claims": linker._EXAMPLE_CLAIMS})
     claims, errors = linker.parse(linker._EXAMPLE_ANSWER, reply, [REF])
     assert errors == []
     query = sqlite_facts({REF: linker._EXAMPLE_CALL[1]})
-    assert [verify(claim, query)[0] for claim in claims] == [
+    assert [(await verify(claim, query))[0] for claim in claims] == [
         "supported",
         "supported",
         "supported",

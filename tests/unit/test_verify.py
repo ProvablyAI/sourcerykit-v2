@@ -1,8 +1,10 @@
 """Tests for sourcerykit.verify: run() scoping and Run.verify on a SQLite facts table."""
 
 import asyncio
+import base64
 import json
 import uuid
+from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -47,9 +49,9 @@ async def _verify(answer: str, claims: list[dict[str, Any]] | str) -> verify_mod
     """Run.verify with the recorded call and the facts table on SQLite instead of Postgres."""
     query = sqlite_facts({CALL: RESPONSE})
 
-    async def run_claims(found: list[Claim], rows: list[Fact]) -> list[verify_module.ClaimResult]:
+    async def check(found: list[Claim], rows: list[Fact]) -> list[verify_module.ClaimResult]:
         assert {fact.call_ref for fact in rows} == {CALL}
-        return verify_module._results(found, query)
+        return await verify_module._results(found, query, {})
 
     sent: list[list[dict[str, str]]] = []
 
@@ -61,7 +63,7 @@ async def _verify(answer: str, claims: list[dict[str, Any]] | str) -> verify_mod
     run.calls.append(CALL)
     with (
         patch.object(verify_module, "_load_calls", AsyncMock(return_value=[(CALL, "https://w.example", RESPONSE)])),
-        patch.object(verify_module, "_run_claims", run_claims),
+        patch.object(verify_module, "_check", check),
     ):
         report = await run.verify(answer, complete=complete, model="test-model")
     assert RESPONSE in sent[0][-1]["content"] and report.answer in sent[0][-1]["content"]
@@ -81,7 +83,7 @@ async def test_verify_catches_a_contradicted_value_and_reports_what_it_skipped()
     report = await _verify(answer, [_claim("14°C", "$.temperature", 14), _claim("humidity 80%", "$.humidity", 80)])
     assert report.outcome == Outcome.CAUGHT
     assert [r.verdict for r in report.claims] == ["supported", "contradicted"]
-    assert report.claims[1].queries["v"][1] == [68]  # the recorded value, shown with the verdict
+    assert report.claims[1].steps["v"].answer == [68]  # the recorded value, shown with the verdict
     assert [text for _, text in report.unchecked] == ["12"]
 
 
@@ -112,8 +114,35 @@ def test_outcome(verdicts: list[str], outcome: Outcome) -> None:
         verify_module.ClaimResult(
             claim=Claim.model_validate({"text": "x", "unsupported": "no data"}),
             verdict=verdict,
-            queries={},
+            steps={},
         )
         for verdict in verdicts
     ]
     assert verify_module._outcome(results) == outcome
+
+
+async def test_claims_check_proven_answers_as_the_prover_returns_them() -> None:
+    """The prover returns every cell as text: "6.2000" for 6.2, "<null>" for NULL, an aggregate alone."""
+    two_rows = {"type": "resultset", "value": {"columns": [{"name": "num"}], "rows": [["6.2000"], ["<null>"]]}}
+    assert verify_module._cells(two_rows) == ["6.2000", None]
+
+    async def prover(statement: str) -> list[Any]:
+        if "COUNT" in statement:
+            return verify_module._cells({"type": "aggregate", "value": "3"})
+        return verify_module._cells({"type": "resultset", "value": {"rows": [["6.2000"]]}})
+
+    step = {"call": str(CALL), "where": {"path": "$.temperature"}}
+    claim = Claim.model_validate(
+        {
+            "text": "6.2°C, 3 values",
+            "steps": {"t": {**step, "select": "num"}, "n": {**step, "select": "count"}},
+            "checks": [{"expr": "t", "op": "approx", "value": 6.2, "tol": 0.05}, {"expr": "n", "op": "=", "value": 3}],
+        }
+    )
+    [result] = await verify_module._results([claim], prover, {})
+    assert result.verdict == "supported"
+    assert result.steps["t"].answer == [Decimal("6.2")] and result.steps["n"].answer == [3]
+
+
+def test_a_downloaded_proof_is_kept_as_base64_of_its_bytes() -> None:
+    assert base64.b64decode(verify_module._encode(b"1,2,255")) == bytes([1, 2, 255])

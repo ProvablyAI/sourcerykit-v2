@@ -19,7 +19,7 @@ A claim the recorded data cannot back at all (a currency the response never ment
 import ast
 import operator
 import re
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import datetime, time
 from decimal import ROUND_HALF_EVEN, Context, Decimal, DivisionByZero, InvalidOperation, Overflow, localcontext
 from typing import Any, Literal
@@ -30,7 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sourcerykit.facts import canonical_number
 
 Verdict = Literal["supported", "contradicted", "unsupported"]
-Query = Callable[[str], list[Any]]
+Query = Callable[[str], Awaitable[list[Any]]]
 """Runs one SQL query and returns the first column of every row."""
 
 _TEXT_COLUMNS = {"path", "pattern", "obj", "type", "text"}
@@ -150,7 +150,9 @@ class Claim(BaseModel):
         return self
 
 
-def verify(claim: Claim, query: Query, table: str = "facts") -> tuple[Verdict, dict[str, tuple[str | None, list[Any]]]]:
+async def verify(
+    claim: Claim, query: Query, table: str = "facts"
+) -> tuple[Verdict, dict[str, tuple[str | None, list[Any]]]]:
     """The claim's verdict, and each step's SQL with its answer.
 
     A step whose answer is known without running it (it filters on an empty or NULL answer, which
@@ -164,7 +166,7 @@ def verify(claim: Claim, query: Query, table: str = "facts") -> tuple[Verdict, d
     try:
         for name, step in claim.steps.items():
             statement = sql(step, answers, table)
-            answers[name] = _no_rows(step) if statement is None else query(statement)
+            answers[name] = _no_rows(step) if statement is None else [_typed(step, v) for v in await query(statement)]
             queries[name] = (statement, answers[name])
         with localcontext(_ARITHMETIC_CONTEXT):
             holds = all(_holds(check, answers) for check in claim.checks)
@@ -253,6 +255,14 @@ def _no_rows(step: Step) -> list[Any]:
     if step.select == "count":
         return [0]
     return [None] if step.select in _AGGREGATES else []
+
+
+def _typed(step: Step, value: Any) -> Any:
+    """``value`` as the step's column holds it, whatever the database or prover returned it as."""
+    if value is None or step.select in ("text", "obj"):
+        return value
+    number = Decimal(str(value))
+    return int(number) if step.select in ("idx", "count") else number
 
 
 def _single(answer: list[Any]) -> Any:

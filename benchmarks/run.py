@@ -12,6 +12,7 @@ The claims' queries run on a PostgreSQL facts table, by default a local one:
     docker run -d --name sourcerykit-bench -e POSTGRES_PASSWORD=bench -p 55432:5432 postgres:17
 """
 
+import asyncio
 import json
 import os
 import sys
@@ -123,7 +124,7 @@ def claimed_verdicts(cases: list[dict[str, Any]], make_claims: Claims, notes: li
     """
     with psycopg.connect(DATABASE_URL, autocommit=True) as db:
 
-        def query(sql: str) -> list[Any]:
+        async def query(sql: str) -> list[Any]:
             return [row[0] for row in db.execute(sql)]
 
         for case in cases:
@@ -133,7 +134,7 @@ def claimed_verdicts(cases: list[dict[str, Any]], make_claims: Claims, notes: li
                 f"  {case['id']}: {error}" if error.startswith("UNCHECKED") else f"  MALFORMED  {case['id']}: {error}"
                 for error in errors
             )
-            linked = [(_span(answer, c.text), c.text, verify(c, query)[0]) for c in claims]
+            linked = [(_span(answer, c.text), c.text, asyncio.run(verify(c, query))[0]) for c in claims]
             statements = [(_span(answer, s["text"]), s) for s in case["claims"]]
             bad = [span for span, s in statements if s["gold_verdict"] in BAD]
             matched: set[int] = set()

@@ -29,8 +29,8 @@ def _make_settings(
     middleware_id: uuid.UUID | None = None,
     database_id: uuid.UUID | None = None,
     schema_id: uuid.UUID | None = None,
-    table_id: uuid.UUID | None = None,
-    collection_id: uuid.UUID | None = None,
+    facts_table_id: uuid.UUID | None = None,
+    facts_collection_id: uuid.UUID | None = None,
 ) -> Settings:
     """Build a real Settings with sensible defaults."""
     return Settings(
@@ -41,8 +41,8 @@ def _make_settings(
         middleware_id=middleware_id,
         database_id=database_id,
         schema_id=schema_id,
-        table_id=table_id,
-        collection_id=collection_id,
+        facts_table_id=facts_table_id,
+        facts_collection_id=facts_collection_id,
     )
 
 
@@ -52,8 +52,8 @@ def _make_full_settings(**overrides: object) -> Settings:
         middleware_id=overrides.get("middleware_id") or uuid.uuid4(),  # type: ignore[arg-type]
         database_id=overrides.get("database_id") or uuid.uuid4(),  # type: ignore[arg-type]
         schema_id=overrides.get("schema_id") or uuid.uuid4(),  # type: ignore[arg-type]
-        table_id=overrides.get("table_id") or uuid.uuid4(),  # type: ignore[arg-type]
-        collection_id=overrides.get("collection_id") or uuid.uuid4(),  # type: ignore[arg-type]
+        facts_table_id=overrides.get("facts_table_id") or uuid.uuid4(),  # type: ignore[arg-type]
+        facts_collection_id=overrides.get("facts_collection_id") or uuid.uuid4(),  # type: ignore[arg-type]
     )
 
 
@@ -244,9 +244,9 @@ class TestDeepCheckCollectionAndIds:
             mock_svc.get_middleware_id = AsyncMock(return_value=s.middleware_id)
             mock_svc.get_database_id = AsyncMock(return_value=s.database_id)
             mock_svc.get_database_schema_id_and_table_id = AsyncMock(
-                return_value={"schema_id": s.schema_id, "table_id": s.table_id}
+                return_value={"schema_id": s.schema_id, "table_id": s.facts_table_id}
             )
-            mock_svc.get_collection_id = AsyncMock(return_value=s.collection_id)
+            mock_svc.get_collection_id = AsyncMock(return_value=s.facts_collection_id)
             ok, msg = await _deep_check_collection_and_ids(s)
         assert ok is True
         assert "verified" in msg.lower()
@@ -265,7 +265,7 @@ class TestDeepCheckCollectionAndIds:
             mock_svc.get_middleware_id = AsyncMock(return_value=s.middleware_id)
             mock_svc.get_database_id = AsyncMock(return_value=s.database_id)
             mock_svc.get_database_schema_id_and_table_id = AsyncMock(
-                return_value={"schema_id": s.schema_id, "table_id": s.table_id}
+                return_value={"schema_id": s.schema_id, "table_id": s.facts_table_id}
             )
             mock_svc.get_collection_id = AsyncMock(return_value=uuid.uuid4())
             ok, msg = await _deep_check_collection_and_ids(s)
