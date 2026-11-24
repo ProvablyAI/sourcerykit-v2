@@ -77,6 +77,11 @@ A check compares what the steps returned with what the answer states:
    unsupported.
 7. If the responses hold nothing that backs or refutes a statement, it is unsupported. Never
    check something other than what the statement says.
+8. Text is compared as written, ignoring only case, spacing and underscores ("On time" matches
+   ON_TIME). If the answer names the data's value in other words (a name for a code, "United
+   States" for US, "London to Paris" for LHR→CDG), the statement is unsupported: give the value
+   the data writes. If it states a different value ("Delayed" where the data says ON_TIME),
+   check it: the check decides.
 
 Reply with JSON only: {"claims": [...]}.
 """
@@ -403,11 +408,15 @@ _QUOTES = str.maketrans("\u2018\u2019\u201c\u201d", "''\"\"")
 
 
 def _quote(answer: str, text: str) -> str:
-    """``text`` as the answer writes it, curly or straight quotes alike."""
-    start = answer.translate(_QUOTES).find(text.translate(_QUOTES))
+    """``text`` as the answer writes it: curly or straight quotes alike, and markdown emphasis
+    (``*``) skipped, which models leave out of quotes ("wind 14 km/h" in "**wind 14 km/h**")."""
+    kept = [i for i, char in enumerate(answer) if char != "*"]
+    plain = "".join(answer[i] for i in kept).translate(_QUOTES)
+    wanted = text.replace("*", "").translate(_QUOTES)
+    start = plain.find(wanted) if wanted else -1
     if start < 0:
         raise ValueError("text is not quoted from the answer")
-    return answer[start : start + len(text)]
+    return answer[kept[start] : kept[start + len(wanted) - 1] + 1]
 
 
 def _request(answer: str, calls: list[tuple[str, str]]) -> str:

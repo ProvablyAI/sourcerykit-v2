@@ -116,6 +116,20 @@ def test_parse_matches_curly_quotes_and_keeps_the_answer_s() -> None:
     assert errors == [] and claims[0].text == "isn\u2019t available"
 
 
+def test_parse_matches_quotes_across_markdown_emphasis() -> None:
+    answer = "London is **6.5 °C**, with a **wind speed of 14.8 km/h**."
+    quoted = [
+        ("a wind speed of 14.8 km/h", "a **wind speed of 14.8 km/h"),  # emphasis left out of the quote
+        ("**6.5 °C**", "6.5 °C"),  # or kept in it: the words it emphasizes
+        ("6.5 °C, with", "6.5 °C**, with"),
+    ]
+    for text, as_written in quoted:
+        claims, errors = linker.parse(answer, json.dumps({"claims": [{"text": text, "unsupported": "-"}]}), [])
+        assert errors == [] and claims[0].text == as_written
+    claims, errors = linker.parse(answer, json.dumps({"claims": [{"text": "**", "unsupported": "-"}]}), [])
+    assert claims == [] and "not quoted" in errors[0]
+
+
 def _price_claim(text: str, check: dict[str, Any]) -> dict[str, Any]:
     return {
         "text": text,
