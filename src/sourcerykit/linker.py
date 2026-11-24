@@ -10,6 +10,7 @@ makes the call with its own client.
 import ast
 import json
 import re
+from collections.abc import Iterable
 from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
@@ -17,7 +18,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from sourcerykit.claims import Claim
+from sourcerykit.claims import Claim, folded
 
 INSTRUCTIONS = """\
 You turn an AI agent's answer into claims that can be checked against the API responses the
@@ -172,18 +173,27 @@ def messages(answer: str, calls: list[tuple[str, str]]) -> list[dict[str, str]]:
     ]
 
 
-def parse(answer: str, reply: str, calls: list[UUID], paths: set[str] | None = None) -> tuple[list[Claim], list[str]]:
+def parse(
+    answer: str, reply: str, calls: list[UUID], paths: set[str] | None = None, texts: Iterable[str] = ()
+) -> tuple[list[Claim], list[str]]:
     """The valid claims of the model's ``reply``, and why each other one was dropped.
 
     ``calls`` holds the UUIDs of the recorded calls, in the order given to ``messages``, and
     ``paths`` every path and pattern of their facts. A claim is dropped if it is malformed, does
     not quote the answer, reads a call that was not shown, or filters on a path or pattern that is
     not in the data: a mistyped one would select nothing, and pass as a contradicted claim.
+
+    A text filter is spelled as in ``texts`` when exactly one of them is the same text once folded
+    (``claims.folded``): the answer's "no physical damage" filters on the data's "No physical
+    damage", rather than select nothing.
     """
     items = _claims(reply)
     if items is None:
         return [], [f"reply is not {{'claims': [...]}}: {reply[:200]!r}"]
     names = {f"call_{i}": str(call) for i, call in enumerate(calls, 1)}
+    spellings: dict[str, set[str]] = {}
+    for text in texts:
+        spellings.setdefault(folded(text), set()).add(text)
     claims, errors = [], []
     for item in items:
         try:
@@ -197,6 +207,7 @@ def parse(answer: str, reply: str, calls: list[UUID], paths: set[str] | None = N
                 raise ValueError(f"not in the data: {sorted(unknown)}")
             if claim.unsupported is None:
                 _guard(claim)
+            _respell(claim, spellings)
             claims.append(claim)
         except (ValidationError, ValueError, KeyError, TypeError) as e:
             errors.append(f"{str(item)[:120]}: {e!r}")
@@ -356,6 +367,36 @@ def _filtered_paths(claim: Claim) -> set[str]:
                 value = next(iter(value.values()))
             found.update(v for v in (value if isinstance(value, list) else [value]) if isinstance(v, str))
     return found
+
+
+def filter_texts(claim: Claim) -> set[str]:
+    """The constants the claim's steps filter the ``text`` column on."""
+    found: set[str] = set()
+    for step in claim.steps.values():
+        value = step.where.get("text")
+        operands = [value] if not isinstance(value, dict) else [] if "step" in value else list(value.values())
+        for operand in operands:
+            found.update(v for v in (operand if isinstance(operand, list) else [operand]) if isinstance(v, str))
+    return found
+
+
+def _respell(claim: Claim, spellings: dict[str, set[str]]) -> None:
+    """Spell the claim's text filters as the data does, where a single spelling matches."""
+
+    def spelled(value: Any) -> Any:
+        if isinstance(value, str) and len(found := spellings.get(folded(value), set())) == 1:
+            return next(iter(found))
+        return value
+
+    for step in claim.steps.values():
+        value = step.where.get("text")
+        if isinstance(value, str):
+            step.where["text"] = spelled(value)
+        elif isinstance(value, dict) and "step" not in value:
+            step.where["text"] = {
+                op: [spelled(v) for v in operand] if isinstance(operand, list) else spelled(operand)
+                for op, operand in value.items()
+            }
 
 
 _QUOTES = str.maketrans("\u2018\u2019\u201c\u201d", "''\"\"")

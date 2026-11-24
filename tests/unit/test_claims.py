@@ -275,6 +275,11 @@ def test_check_arithmetic_ignores_the_host_decimal_context() -> None:
         ("2026-11-23T11:00:00", "supported"),
         ("2026-11-23 12:00", "contradicted"),
         ("11:00", "contradicted"),  # a time is not a date and time
+        ("2026-11-23 11:00 UTC", "supported"),  # the zone written as a word
+        ("2026-11-23 11:00 GMT", "supported"),
+        ("2026-11-23T11:00:00+00:00", "supported"),
+        ("2026-11-23T12:00:00+01:00", "supported"),  # the same instant in another zone
+        ("2026-11-23 11:00 +01:00", "contradicted"),  # an hour earlier
     ],
 )
 def test_dates_and_times_compare_as_moments(stated: str, verdict: str) -> None:
@@ -285,4 +290,46 @@ def test_dates_and_times_compare_as_moments(stated: str, verdict: str) -> None:
             "checks": [{"expr": "t", "op": "=", "value": stated}],
         }
     )
-    assert asyncio.run(verify(claim, sqlite_facts({WEATHER: {"time": "2026-11-23T11:00"}})))[0] == verdict
+    assert asyncio.run(verify(claim, sqlite_facts({WEATHER: {"time": "2026-11-23T11:00Z"}})))[0] == verdict
+
+
+@pytest.mark.parametrize(
+    ("recorded", "stated", "verdict"),
+    [
+        ("2026-11-23T11:00", "2026-11-23 11:00 UTC", "supported"),  # only the answer gives a zone
+        ("2026-11-23T11:00", "2026-11-23T11:00", "supported"),
+        ("2026-11-23T11:00", "2026-11-23 12:00 UTC", "contradicted"),
+    ],
+)
+def test_a_time_without_a_zone_compares_by_the_clock(recorded: str, stated: str, verdict: str) -> None:
+    claim = Claim.model_validate(
+        {
+            "text": stated,
+            "steps": {"t": {"call": WEATHER, "select": "text", "where": {"path": "$.time"}}},
+            "checks": [{"expr": "t", "op": "=", "value": stated}],
+        }
+    )
+    assert asyncio.run(verify(claim, sqlite_facts({WEATHER: {"time": recorded}})))[0] == verdict
+
+
+@pytest.mark.parametrize(
+    ("recorded", "stated", "verdict"),
+    [
+        ("SHIPPED", "Shipped", "supported"),
+        ("SHIPPED", "shipped", "supported"),
+        ("SHIPPED", "Delivered", "contradicted"),
+        ("ON_TIME", "On time", "supported"),
+        ("ON_TIME", "Delayed", "contradicted"),
+        ("LHR→CDG", "LHR → CDG", "supported"),
+        ("LHR→CDG", "CDG → LHR", "contradicted"),
+    ],
+)
+def test_text_compares_ignoring_case_whitespace_and_underscores(recorded: str, stated: str, verdict: str) -> None:
+    claim = Claim.model_validate(
+        {
+            "text": f"Status: {stated}",
+            "steps": {"s": {"call": WEATHER, "select": "text", "where": {"path": "$.status"}}},
+            "checks": [{"expr": "s", "op": "=", "value": stated}],
+        }
+    )
+    assert asyncio.run(verify(claim, sqlite_facts({WEATHER: {"status": recorded}})))[0] == verdict

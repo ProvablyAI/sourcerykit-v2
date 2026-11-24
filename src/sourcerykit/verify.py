@@ -114,7 +114,8 @@ class Run:
         messages = linker.messages(answer, [(url, raw) for _, url, raw in recorded])
         reply = await _complete(messages, model, base_url or settings.linker_url, api_key or settings.linker_api_key)
         paths = {p for fact in rows for p in (fact.path, fact.pattern)}
-        claims, dropped = linker.parse(answer, reply, [call_id for call_id, _, _ in recorded], paths)
+        texts = {fact.text for fact in rows if fact.text is not None}
+        claims, dropped = linker.parse(answer, reply, [call_id for call_id, _, _ in recorded], paths, texts)
         results = await _check(claims, rows) if claims else []
         return Report(
             org_id=settings.org_id,
@@ -161,7 +162,9 @@ async def check(report: Report, *, api_url: str = DEFAULT_PROVABLY_API_URL) -> l
             raise _NotProven(statement)
         return proven[statement]
 
-    allowed, _ = linker.parse(report.answer, report.reply, report.calls)
+    # The report's text filters stand in for the data's spellings, which its proofs bind
+    spellings = {text for result in report.claims for text in linker.filter_texts(result.claim)}
+    allowed, _ = linker.parse(report.answer, report.reply, report.calls, texts=spellings)
     verdicts = []
     for result in report.claims:
         text = repr(result.claim.text)

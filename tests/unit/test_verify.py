@@ -220,6 +220,16 @@ async def test_check_finds_what_was_changed_in_a_report(
     assert problems == [] if problem is None else any(problem in p for p in problems), problems
 
 
+async def test_a_text_filter_spelled_as_the_data_does_passes_check() -> None:
+    """The reply filters on "rome", the data and the proof on "Rome": check must accept it."""
+    step = {"call": "call_1", "select": "count", "where": {"path": "$.city", "text": "rome"}}
+    claim = {"text": "rome", "steps": {"n": step}, "checks": [{"expr": "n", "op": "=", "value": 1}]}
+    report = await _verify("The city is rome.", [claim])
+    assert report.outcome == Outcome.PASS and report.claims[0].claim.steps["n"].where["text"] == "Rome"
+    with patch.object(verify_module, "_verify_proof", _public_verifier):
+        assert await verify_module.check(report) == []
+
+
 async def test_check_rejects_a_proof_the_public_verifier_refuses() -> None:
     report = await _verify("It is 14°C.", [_claim("14°C", "$.temperature", 14)])
     with patch.object(verify_module, "_verify_proof", AsyncMock(return_value=None)):

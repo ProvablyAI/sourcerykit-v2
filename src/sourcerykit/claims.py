@@ -320,18 +320,38 @@ def _evaluate(node: ast.expr, answers: dict[str, list[Any]]) -> Decimal:
         raise _Unresolved(f"cannot compute {ast.unparse(node)}") from None
 
 
+def folded(text: str) -> str:
+    """``text`` without case, whitespace or underscores: "On time", "ON_TIME" and "ontime" are
+    the same text, as are "LHR → CDG" and "LHR→CDG"."""
+    return "".join(text.split()).replace("_", "").casefold()
+
+
 def _same_text(got: Any, want: Any) -> bool:
-    """Equal text, or the same date and time written two ISO ways ("2026-11-23 11:00" and
-    "2026-11-23T11:00", "11:00" and "11:00:00")."""
+    """Equal text once folded ("Shipped" and "SHIPPED"), or the same date and time written two
+    ISO ways ("2026-11-23 11:00" and "2026-11-23T11:00:00Z")."""
     if got == want:
         return True
     if not (isinstance(got, str) and isinstance(want, str)):
         return False
+    if folded(got) == folded(want):
+        return True
     moments = (_moment(got), _moment(want))
-    return moments[0] is not None and moments[0] == moments[1]
+    if moments[0] is None or moments[1] is None or type(moments[0]) is not type(moments[1]):
+        return False
+    if (moments[0].tzinfo is None) != (moments[1].tzinfo is None):
+        # One side gives no zone, as answers often do: the clock reading is what it states
+        return moments[0].replace(tzinfo=None) == moments[1].replace(tzinfo=None)
+    return moments[0] == moments[1]
+
+
+_UTC_WORDS = (" UTC", " GMT")
 
 
 def _moment(text: str) -> datetime | time | None:
+    """The date and time ``text`` writes in ISO form; a trailing "Z", " UTC" or " GMT" is +00:00."""
+    for word in _UTC_WORDS:
+        if text.endswith(word):
+            text = text.removesuffix(word) + "+00:00"
     for parse in (datetime.fromisoformat, time.fromisoformat):
         try:
             return parse(text)

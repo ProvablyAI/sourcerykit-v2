@@ -73,6 +73,36 @@ def test_parse_drops_claims_on_paths_not_in_the_data() -> None:
     assert claims == [] and "not in the data: ['$.hourly.temp[*]']" in errors[0]
 
 
+async def test_parse_spells_text_filters_as_the_data_does() -> None:
+    """The answer's "no physical damage" must find the data's "No physical damage", not count 0."""
+    data = {"conditions": ["Original packaging required", "No physical damage"]}
+    pattern = "$.conditions[*]"
+
+    def counted(text: Any) -> dict[str, Any]:
+        step = {"call": "call_1", "select": "count", "where": {"pattern": pattern, "text": text}}
+        return {"text": "no physical damage", "steps": {"n": step}, "checks": [{"expr": "n", "op": ">=", "value": 1}]}
+
+    reply = json.dumps({"claims": [counted("no physical damage"), counted({"in": ["no physical damage", "dented"]})]})
+    claims, errors = linker.parse("Items need no physical damage.", reply, [REF], texts=data["conditions"])
+    assert errors == []
+    assert [claim.steps["n"].where["text"] for claim in claims] == [
+        "No physical damage",
+        {"in": ["No physical damage", "dented"]},  # no spelling of "dented" in the data: kept
+    ]
+    query = sqlite_facts({REF: data})
+    assert [(await verify(claim, query))[0] for claim in claims] == ["supported", "supported"]
+
+    # Spacing and underscores fold away too
+    claims, _ = linker.parse("Items need no physical damage.", reply, [REF], texts={"No_Physical_Damage"})
+    assert claims[0].steps["n"].where["text"] == "No_Physical_Damage"
+
+    # Two spellings that differ only in case: neither is chosen
+    claims, _ = linker.parse(
+        "Items need no physical damage.", reply, [REF], texts={"No physical damage", "NO PHYSICAL DAMAGE"}
+    )
+    assert claims[0].steps["n"].where["text"] == "no physical damage"
+
+
 def test_parse_rejects_a_reply_that_is_not_claims() -> None:
     assert linker.parse("x", "Sorry, I cannot help.", []) == (
         [],
