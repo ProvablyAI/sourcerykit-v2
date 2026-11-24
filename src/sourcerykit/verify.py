@@ -2,9 +2,9 @@
 
     async with sourcerykit.run() as run:
         result = await Runner.run(agent, question)  # tools call APIs inside async_intercept_context
-    report = await run.verify(result.final_output, complete=ask_model, model="anthropic/claude-haiku-5.5")
+    report = await run.verify(result.final_output, model="anthropic/claude-haiku-5.5")
 
-The linker (one call to the caller's model) turns the answer into claims. The recorded responses,
+The linker (one call to the given model) turns the answer into claims. The recorded responses,
 flattened into the facts table, are sealed (committed to by the qedb middleware), and every query
 the claims run on them is proven: the model only writes the checks, the verdicts come from proven
 data, and the report carries the proofs, which ``check`` lets anyone verify.
@@ -13,9 +13,10 @@ data, and the report carries the proofs, which ``check`` lets anyone verify.
 import asyncio
 import base64
 import unicodedata
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
@@ -29,14 +30,12 @@ from sourcerykit.claims import Claim, Query, Verdict, verify
 from sourcerykit.config import DEFAULT_PROVABLY_API_URL, get_settings
 from sourcerykit.db._engine import get_engine
 from sourcerykit.db._schema import facts, intercepts
-from sourcerykit.errors import SourceryKitBootstrapError
+from sourcerykit.errors import SourceryKitBootstrapError, SourceryKitConfigError
 from sourcerykit.facts import Fact, flatten
+from sourcerykit.intercept._self_egress import provably_self_egress
 from sourcerykit.intercept.interceptor import _ctx_run_calls
 from sourcerykit.schemas.outcome import Outcome
 from sourcerykit.trusted_endpoints import is_endpoint_trusted, list_all_trusted_endpoints_detailed
-
-Complete = Callable[[list[dict[str, str]]], Awaitable[str]]
-"""The caller's model: chat messages in, the text of its reply out."""
 
 
 class StepResult(BaseModel):
@@ -99,20 +98,26 @@ class Run:
     def __init__(self) -> None:
         self.calls: list[UUID] = []
 
-    async def verify(self, answer: str, *, complete: Complete, model: str) -> Report:
-        """Check ``answer`` against the calls recorded in this run; ``model`` labels the report.
+    async def verify(
+        self, answer: str, *, model: str, base_url: str | None = None, api_key: str | None = None
+    ) -> Report:
+        """Check ``answer`` against the calls recorded in this run.
 
-        Call it after the ``run()`` block, so the model's own HTTP traffic is not recorded.
+        ``model`` turns the answer into claims, through the OpenAI-compatible chat API at
+        ``base_url`` with ``api_key``: by default ``SOURCERYKIT_LINKER_URL`` and
+        ``SOURCERYKIT_LINKER_API_KEY``.
         """
+        settings = get_settings()
         answer = unicodedata.normalize("NFC", answer).replace("\r\n", "\n")
         recorded, untrusted = await _by_trust(await _load_calls(self.calls))
         rows = [fact for call_id, _, raw in recorded for fact in flatten(call_id, raw) or []]
-        reply = await complete(linker.messages(answer, [(url, raw) for _, url, raw in recorded]))
+        messages = linker.messages(answer, [(url, raw) for _, url, raw in recorded])
+        reply = await _complete(messages, model, base_url or settings.linker_url, api_key or settings.linker_api_key)
         paths = {p for fact in rows for p in (fact.path, fact.pattern)}
         claims, dropped = linker.parse(answer, reply, [call_id for call_id, _, _ in recorded], paths)
         results = await _check(claims, rows) if claims else []
         return Report(
-            org_id=get_settings().org_id,
+            org_id=settings.org_id,
             outcome=_outcome([result.verdict for result in results]),
             answer=answer,
             extractor=f"linker:{model}",
@@ -178,6 +183,46 @@ async def check(report: Report, *, api_url: str = DEFAULT_PROVABLY_API_URL) -> l
     return problems
 
 
+async def _complete(messages: list[dict[str, str]], model: str, base_url: str, api_key: str) -> str:
+    """The linker model's reply to ``messages``: through Claude's Messages API when ``base_url`` is
+    Anthropic's, otherwise through an OpenAI-compatible chat API.
+
+    No sampling settings are sent: current models reject them, and a model's reply is not
+    reproducible anyway. The report keeps the reply, from which anyone can rebuild every claim.
+    """
+    if not base_url:
+        raise SourceryKitConfigError("set SOURCERYKIT_LINKER_URL, or pass base_url, for the linker model")
+    with provably_self_egress():  # the linker's traffic is not evidence
+        if urlsplit(base_url).hostname == _ANTHROPIC_HOST:
+            return await _complete_claude(messages, model, api_key)
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(
+                f"{base_url.rstrip('/')}/chat/completions", headers=headers, json={"model": model, "messages": messages}
+            )
+    response.raise_for_status()
+    content: str | None = response.json()["choices"][0]["message"]["content"]
+    return content or ""
+
+
+_ANTHROPIC_HOST = "api.anthropic.com"
+
+
+async def _complete_claude(messages: list[dict[str, str]], model: str, api_key: str) -> str:
+    """The reply through the official SDK; without ``api_key`` it finds its own credentials."""
+    try:
+        from anthropic import AsyncAnthropic  # noqa: PLC0415
+    except ImportError as e:
+        raise SourceryKitConfigError(
+            "Claude's API needs the anthropic package: pip install 'sourcerykit[anthropic]'"
+        ) from e
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+    turns: Any = [m for m in messages if m["role"] != "system"]
+    async with AsyncAnthropic(api_key=api_key or None) as client:
+        response = await client.messages.create(model=model, max_tokens=16000, system=system, messages=turns)
+    return "".join(block.text for block in response.content if block.type == "text")
+
+
 class _NotProven(LookupError):
     """A query a claim runs has no verified proof."""
 
@@ -185,7 +230,8 @@ class _NotProven(LookupError):
 async def _verify_proof(client: httpx.AsyncClient, url: str, proof: str) -> dict[str, Any] | None:
     """The public verifier's answer for ``proof``, or None if it rejects it."""
     proof_file = ",".join(str(byte) for byte in base64.b64decode(proof))
-    response = await client.post(url, files={"proof_file": ("proof.provably", proof_file)})
+    with provably_self_egress():
+        response = await client.post(url, files={"proof_file": ("proof.provably", proof_file)})
     if response.status_code >= 400:
         return None
     answer: dict[str, Any] = response.json()

@@ -9,12 +9,14 @@ from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from sourcerykit import verify as verify_module
 from sourcerykit.claims import Claim, Verdict
 from sourcerykit.facts import Fact
 from sourcerykit.intercept import interceptor
+from sourcerykit.intercept._self_egress import is_self_egress
 from sourcerykit.intercept.interceptor import async_intercept_context
 from sourcerykit.schemas.outcome import Outcome
 from tests.unit.test_claims import sqlite_facts
@@ -82,7 +84,8 @@ async def _verify(
 
     sent: list[list[dict[str, str]]] = []
 
-    async def complete(messages: list[dict[str, str]]) -> str:
+    async def complete(messages: list[dict[str, str]], model: str, *_: str) -> str:
+        assert model == "test-model"
         sent.append(messages)
         return claims if isinstance(claims, str) else json.dumps({"claims": claims})
 
@@ -97,9 +100,10 @@ async def _verify(
         patch.object(verify_module, "list_all_trusted_endpoints_detailed", AsyncMock(return_value=list(trusted))),
         patch.object(verify_module, "is_endpoint_trusted", is_trusted),
         patch.object(verify_module, "_check", check),
+        patch.object(verify_module, "_complete", complete),
         patch.object(verify_module, "get_settings", return_value=MagicMock(org_id=ORG)),
     ):
-        report = await run.verify(answer, complete=complete, model="test-model")
+        report = await run.verify(answer, model="test-model")
     assert RESPONSE in sent[0][-1]["content"] and report.answer in sent[0][-1]["content"]
     return report
 
@@ -246,3 +250,53 @@ async def test_once_endpoints_are_trusted_a_call_to_another_is_left_out() -> Non
     assert report.calls == [CALL] and report.untrusted == [EVIL[1]]
     assert [r.claim.text for r in report.claims] == ["14°C"]  # the linker was never shown call_2
     assert "UNTRUSTED      https://evil.example/weather: recorded, not used as evidence" in str(report)
+
+
+async def test_the_linker_is_asked_through_an_openai_compatible_chat_api_and_not_recorded() -> None:
+    messages = [{"role": "user", "content": "hi"}]
+    reply = '{"claims": []}'
+
+    def chat(request: httpx.Request) -> httpx.Response:
+        assert is_self_egress()  # so the interceptor does not record it
+        assert str(request.url) == "https://llm.example/v1/chat/completions"
+        assert request.headers["Authorization"] == "Bearer key"
+        assert json.loads(request.content) == {"model": "m", "messages": messages}  # no sampling settings
+        return httpx.Response(200, json={"choices": [{"message": {"content": reply}}]})
+
+    real = httpx.AsyncClient
+    with patch("sourcerykit.verify.httpx.AsyncClient", lambda **kw: real(transport=httpx.MockTransport(chat), **kw)):
+        assert await verify_module._complete(messages, "m", "https://llm.example/v1/", "key") == reply
+
+
+async def test_claude_is_asked_through_its_messages_api() -> None:
+    """Anthropic's URL routes to the official SDK: system prompt hoisted, only text blocks read."""
+    sent: dict[str, Any] = {}
+
+    class Messages:
+        async def create(self, **request: Any) -> Any:
+            assert is_self_egress()
+            sent.update(request)
+            blocks = [MagicMock(type="thinking"), MagicMock(type="text", text='{"claims": ')]
+            return MagicMock(content=[*blocks, MagicMock(type="text", text="[]}")])
+
+    class Claude:
+        def __init__(self, *, api_key: str | None) -> None:
+            assert api_key == "key"
+            self.messages = Messages()
+
+        async def __aenter__(self) -> "Claude":
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            pass
+
+    messages = [{"role": "system", "content": "rules"}, {"role": "user", "content": "hi"}]
+    with patch("anthropic.AsyncAnthropic", Claude):
+        reply = await verify_module._complete(messages, "claude-haiku-5-5", "https://api.anthropic.com", "key")
+    assert reply == '{"claims": []}'
+    assert sent == {
+        "model": "claude-haiku-5-5",
+        "max_tokens": 16000,
+        "system": "rules",
+        "messages": [{"role": "user", "content": "hi"}],
+    }

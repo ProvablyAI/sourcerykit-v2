@@ -46,7 +46,13 @@ class Settings:
     """SOURCERYKIT_POSTGRES_URL — URL for the agent's Postgres database."""
 
     project_name: str = ""
-    """SOURCERYKIT_PROJECT_NAME — Project name, used as the Provably collection name."""
+    """SOURCERYKIT_PROJECT_NAME — Project name; its Provably collection is ``<project_name>-facts``."""
+
+    linker_url: str = ""
+    """SOURCERYKIT_LINKER_URL — Base URL of the OpenAI-compatible chat API of the linker model."""
+
+    linker_api_key: str = ""
+    """SOURCERYKIT_LINKER_API_KEY — API key for the linker's chat API."""
 
     provably_app: str = DEFAULT_PROVABLY_APP_URL
     """SOURCERYKIT_PROVABLY_APP_URL — URL of the Provably APP."""
@@ -192,6 +198,8 @@ def get_settings() -> Settings:
         org_id=_org_id,
         postgres_url=_local_resolve("SOURCERYKIT_POSTGRES_URL", "SOURCERYKIT_POSTGRES_URL"),
         project_name=_local_resolve("SOURCERYKIT_PROJECT_NAME", "SOURCERYKIT_PROJECT_NAME"),
+        linker_url=_local_resolve("SOURCERYKIT_LINKER_URL", "SOURCERYKIT_LINKER_URL"),
+        linker_api_key=_local_resolve("SOURCERYKIT_LINKER_API_KEY", "SOURCERYKIT_LINKER_API_KEY"),
         provably_app=_url("SOURCERYKIT_PROVABLY_APP_URL", "provably_app") or DEFAULT_PROVABLY_APP_URL,
         provably_api=_url("SOURCERYKIT_PROVABLY_API_URL", "provably_api") or DEFAULT_PROVABLY_API_URL,
         provably_mcp=_url("SOURCERYKIT_PROVABLY_MCP_URL", "provably_mcp") or DEFAULT_PROVABLY_MCP_URL,

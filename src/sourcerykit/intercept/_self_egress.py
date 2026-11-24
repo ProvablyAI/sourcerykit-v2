@@ -1,4 +1,4 @@
-"""Self-egress exemption: SDK-internal HTTP calls bypass intercept recording and trust checks."""
+"""Self-egress exemption: the SDK's own HTTP calls (the linker, the public verifier) are never recorded."""
 
 import contextvars
 from collections.abc import Generator
@@ -14,11 +14,7 @@ def is_self_egress() -> bool:
 
 @contextmanager
 def provably_self_egress() -> Generator[None, None, None]:
-    """Mark a block of code as SDK-internal egress: skip trust check AND skip recording.
-
-    Used by handoff.transport, handoff.evaluator, handoff._bootstrap (via handoff._http)
-    when they make their own httpx / requests calls so the SDK doesn't trip its own gate.
-    """
+    """Mark a block of code as the SDK's own egress: its HTTP calls are not recorded."""
     token = _self_egress.set(True)
     try:
         yield
