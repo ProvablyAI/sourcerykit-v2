@@ -1,6 +1,5 @@
 """aiohttp provider hook — intercept ``aiohttp.ClientSession._request``."""
 
-import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -36,23 +35,19 @@ def _make_aiohttp_wrapper(
         if is_self_egress():
             return response
 
-        content_type = response.headers.get("Content-Type", "").lower()
-        is_stream = (
-            "text/event-stream" in content_type or response.headers.get("Transfer-Encoding", "").lower() == "chunked"
-        )
-
         url_str = str(str_or_url)
         payload: dict[str, Any] = {k: kwargs[k] for k in _AIOHTTP_KWARG_KEYS if k in kwargs and kwargs[k] is not None}
 
-        if is_stream:
-            await record_fn(url_str, method, payload, json.dumps({"stream": "stream_captured_via_aiohttp"}))
+        # An event stream may never end, so reading it here would block the caller: it is not
+        # recorded. Any other body, chunked or not, is read in full; aiohttp keeps it for the caller.
+        if "text/event-stream" in response.headers.get("Content-Type", "").lower():
+            _log.warning("aiohttp_event_stream_not_recorded", url=url_str)
             return response
-
         try:
             raw = (await response.read()).decode(errors="replace")
         except Exception as e:
-            _log.warning("aiohttp_body_read_failed", url=url_str, error=str(e))
-            raw = json.dumps({"text": "non_json_or_exhausted_payload"})
+            _log.warning("aiohttp_body_read_failed_not_recorded", url=url_str, error=str(e))
+            return response
 
         await record_fn(url_str, method, payload, raw)
         return response

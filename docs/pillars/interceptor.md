@@ -37,12 +37,12 @@ print(r.calls)  # the ids of the recorded calls
 - **Context-aware tagging**: `agent_id` and `action_name` are stored with every call, mapping raw traffic to the agent action that made it. They label the calls; which calls an answer is checked against is set by `run()`.
 - **Any number of calls**: The same tool can be called many times in one run; verification tells the calls apart by their URL and content.
 - **Process-wide interception**: Once initialized, every instance of a supported HTTP library in the process is covered.
-- **Streams**: A streamed `httpx` response is recorded once it has been read to the end.
+- **Streams**: A streamed response through `httpx`, or through `requests` with `stream=True`, is recorded once the caller has read it to the end. A chunked response is read like any other.
 
 ## Limitations
 
 - **Supported libraries**: Only calls made through `httpx`, `aiohttp` and `requests` are recorded.
-- **Streams through `aiohttp` and `requests`**: A streamed response (an event stream, a chunked `aiohttp` response, or `requests` with `stream=True`) is recorded as a placeholder, not its content, so it cannot back a statement. Use `httpx` for those calls.
+- **Event streams through `aiohttp`**: A `text/event-stream` response through `aiohttp` is not recorded, since it may never end; use `httpx` for those calls. A streamed body the caller stops reading early is not recorded either.
 - **JSON responses**: Any response is recorded, but verification reads JSON: a response that is not JSON gives no facts, so statements about it are not verifiable.
 
 To keep calls to some endpoints out of verification, see [trusted-endpoints](https://sourcerykit.provably.ai/docs/pillars/trusted-endpoints). To see how the recorded calls are used, see [verification](https://sourcerykit.provably.ai/docs/pillars/verification).

@@ -1,8 +1,9 @@
 """requests provider hook — intercept ``requests.adapters.HTTPAdapter.send``."""
 
 import asyncio
+import contextvars
 import json
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Iterator
 from typing import Any
 
 from requests.adapters import HTTPAdapter
@@ -40,14 +41,33 @@ def _make_requests_wrapper(
             return response
 
         url, method, payload = _requests_request_to_payload(request)
-        is_stream = (
-            kwargs.get("stream", False) or "text/event-stream" in response.headers.get("Content-Type", "").lower()
-        )
+        if not kwargs.get("stream", False):  # requests has read the whole body
+            _run_async(record_fn(url, method, payload, response.text))
+            return response
 
-        raw = json.dumps({"stream_logged": "stream_captured_via_requests"}) if is_stream else response.text
+        # A streamed body is recorded once the caller has read it to the end, through iter_content,
+        # which .content, .json() and iter_lines use too. It may be read after the intercept block
+        # ends, so it is recorded in the context of the send.
+        context = contextvars.copy_context()
+        orig_iter_content = response.iter_content
+        recorded = False
 
-        _run_async(record_fn(url, method, payload, raw))
+        def iter_content(*args: Any, **kw: Any) -> Iterator[Any]:
+            nonlocal recorded
+            chunks = []
+            for chunk in orig_iter_content(*args, **kw):
+                chunks.append(chunk)
+                yield chunk
+            if recorded:  # read again from requests' copy: already recorded
+                return
+            recorded = True
+            if chunks and isinstance(chunks[0], str):  # decode_unicode=True
+                text = "".join(chunks)
+            else:  # joined first: a character's bytes may span two chunks
+                text = b"".join(chunks).decode(response.encoding or "utf-8", errors="replace")
+            context.run(_run_async, record_fn(url, method, payload, text))
 
+        setattr(response, "iter_content", iter_content)
         return response
 
     return wrapped
