@@ -1,45 +1,60 @@
 # LangChain Agent
-This example demonstrates how to integrate SourceryKit with [LangChain](https://github.com/langchain-ai/langchain) using agent compilation workflows (create_agent). It showcases automated tool intercept capture, target endpoint allow-list constraints, native structured JSON responses via Pydantic, and backend evaluation loops.
+
+This example verifies the answer of an agent built with [LangChain](https://github.com/langchain-ai/langchain)'s `create_agent`. The agent looks up the weather in London on Open-Meteo and answers in plain text; SourceryKit checks every statement of that answer against what Open-Meteo actually returned.
 
 ## How It Works
-1. **HTTP Interception**: The `bootstrap_system()` hook dynamically monitors outbound `httpx` calls, ensuring that network operations generated within the LangChain agent tool loop (`get_current_temperature_london`) are securely logged to your database intercepts table.
-2. **All-Method Trust Gate**: SourceryKit enforces structural target validation checks against your external network endpoints. The external weather lookup endpoint (`api.open-meteo.com`) is explicitly registered via policy seeds (`insert_trusted_endpoint`) before execution.
-3. **Automated Handoff & Evaluation**: Captured network states are bundled alongside the agent's structured `SourceryKitAgentResponse` output. The agent is configured with `response_format=SourceryKitAgentResponse`, which enforces a typed contract—the LLM returns a `answer` string and a `claimed_values` list of `ClaimedValue` objects (each with a JSONPath `path` and extracted string `value`). These `claimed_values` are extracted directly from `result["structured_response"]` and passed to `evaluate_handoff` to verify data integrity and catch hallucinations.
+
+1. **Recording.** `bootstrap_system()` installs the HTTP interceptor. The tool makes its Open-Meteo request inside `async_intercept_context`, so the request and the raw response are stored in your database.
+2. **The run.** `agent.ainvoke(...)` runs inside `async with run() as weather_run:`, which collects every call recorded during it. The agent's answer is the text of its last message, `result["messages"][-1].text`: no `response_format` is needed.
+3. **Verification.** `weather_run.verify(answer, model=...)` turns the answer into claims with one call to the linker model at `SOURCERYKIT_LINKER_URL`, proves each claim's queries on the recorded data, and returns a report; `print(report)` shows it.
+4. **Checking a report.** `check(report)` verifies every proof with Provably's public verifier and recomputes the verdicts and the outcome; it needs no Provably account.
+
+The [OpenAI Agents SDK cookbook](../openai_agents/README.md) explains the report fields, the outcomes and when to list trusted endpoints.
 
 ---
 
 ## Environment Configuration
-Before running the agent, run the interactive setup wizard to configure your SourceryKit project variables automatically:
+
+Run the interactive setup wizard to configure your SourceryKit project:
 
 ```bash
 sourcerykit init
 ```
 
 > [!IMPORTANT]
-> The wizard only configures **SOURCERYKIT_*** variables. It does **not** configure your LLM provider infrastructure keys. You must set your model provider's environment variables (e.g. `OPENROUTER_API_KEY`) separately.
+> The wizard configures the SourceryKit project. Set your LLM-provider variables separately:
 
 | Variable | Required | Description |
 |---|---|---|
-| `MODEL_NAME` | **yes** | Targeted model architecture identifier string passed to create_agent (e.g., `openrouter:openai/gpt-4o-mini`). |
+| `MODEL_NAME` | **yes** | The agent's model as LangChain names it, e.g. `openrouter:openai/gpt-4o-mini` (install `langchain-openrouter`). |
+| `OPENROUTER_API_KEY` | **yes** | Your provider's API key, under the name LangChain expects for it. |
+| `SOURCERYKIT_LINKER_URL` | **yes** | Where the model that turns the answer into claims runs: `https://api.anthropic.com` for Claude directly (install `sourcerykit[anthropic]`), or the base URL of an OpenAI-compatible chat API such as `https://openrouter.ai/api/v1`. |
+| `SOURCERYKIT_LINKER_API_KEY` | **yes** | API key for it; for Claude, it may be left unset when `ANTHROPIC_API_KEY` is set. |
+| `LINKER_MODEL` | **yes** | The linker model, e.g. `anthropic/claude-haiku-5.5` on OpenRouter or `claude-haiku-5-5` on Claude's API. |
 
 ---
 
 ## Execution
-1. Install dependencies:
+
+1. Install the packages:
    ```bash
-   pip install sourcerykit langchain python-dotenv httpx pydantic
+   pip install sourcerykit langchain langchain-openrouter python-dotenv httpx
    ```
-2. Export your LLM-provider keys into your current shell or place them in a local `.env` file:
+2. Export the LLM-provider variables, or put them in a local `.env` file:
    ```bash
    export MODEL_NAME="openrouter:openai/gpt-4o-mini"
+   export OPENROUTER_API_KEY="sk-or-..."
+   export SOURCERYKIT_LINKER_URL="https://openrouter.ai/api/v1"
+   export SOURCERYKIT_LINKER_API_KEY="sk-or-..."
+   export LINKER_MODEL="anthropic/claude-haiku-5.5"
    ```
 3. Run the example:
-      ```bash
-      # Standard Validation
-      python agent_run.py
+   ```bash
+   # An honest answer: PASS, or PASS_WITH_NOTES when it states something the response cannot check
+   python agent_run.py
 
-      # or
-
-      # Hallucination Simulation
-      python agent_run.py --tamper
+   # Asked for the UV index and the chance of rain as well, which the response does not hold
+   python agent_run.py --hallucinate
    ```
+
+With `--hallucinate`, the agent is asked for values Open-Meteo did not return here and told to answer everything; nothing tells it to make anything up. Whether it invents them is up to the model: when it does, the invented values are listed as not verifiable; when it says they are not available, those statements are.

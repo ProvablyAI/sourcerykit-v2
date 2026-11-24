@@ -1,79 +1,80 @@
-# OpenAI Multi-Agent
+# OpenAI Agents SDK: multi-agent customer support
 
-## Customer Support
-This example demonstrates multi-agent orchestration using the [OpenAI Agents SDK](https://github.com/openai/openai-agents-python) with SourceryKit verification. Three specialist agents each query a different customer support table, with centralized evaluation by the orchestrator.
+This example verifies the reply of a multi-agent pipeline built with the [OpenAI Agents SDK](https://github.com/openai/openai-agents-python). An orchestrator answers a customer with the help of three specialists, each calling one endpoint of a support API; SourceryKit checks every statement of the reply the customer receives against what the API actually returned.
 
 ## Flow
 
-```bash
-User: "Customer CUST-001 is asking about order ORD-123..."
-  → Orchestrator Agent
-    → analyzes query, routes to relevant specialists
-    → calls run_order_status_check()
-      → fetches order data, builds HandoffPayload, stores in global dict
-    → calls run_return_policy_check()
-      → fetches policy data, builds HandoffPayload, stores in global dict
-    → calls run_account_balance_check()
-      → fetches balance data, builds HandoffPayload, stores in global dict
-    → calls verify_claims(specialist='order_status')
-    → calls verify_claims(specialist='return_policy')
-    → calls verify_claims(specialist='account_balance')
-    → reports combined verdict
+```text
+Customer: "I'm CUST-001. Where is my order ORD-123, what is the return policy for electronics, ..."
+  async with run():                                        ← collects every recorded call below
+    Orchestrator
+      → order_status_specialist     → GET /orders/ORD-123        (recorded)
+      → return_policy_specialist    → GET /policies/electronics  (recorded)
+      → account_balance_specialist  → GET /accounts/CUST-001     (recorded)
+      → writes the reply
+  verify(reply) → each statement proven against the three responses
 ```
 
 ## How It Works
-1. **HTTP Interception**: Each specialist's tool wraps its HTTP call with `async_intercept_context(agent_id=..., action_name=...)`, logging the request/response to the database separately per agent and per table.
-2. **Specialist Agents**: Three agents, each querying a different support table (orders, policies, accounts). Specialists perform basic validation and return confidence scores in their answers.
-3. **Payload Building**: Deterministic code builds a `HandoffPayload` per specialist and stores it in a global `_payloads` dict. This is the producer side — agents create verifiable artifacts.
-4. **Verification**: The orchestrator calls `verify_claims(specialist='<name>')` to evaluate each payload via `evaluate_handoff`. This is the verifier side — the orchestrator decides WHEN to verify but doesn't pass JSON.
 
-## Mock Data Tables
+1. **The support API.** A small local server, started by the script on `http://127.0.0.1:47231`, serves three tables (orders, policies, accounts) as JSON, so the example runs with one command.
+2. **Recording.** Each specialist's tool makes its request inside `async_intercept_context(agent_id=..., action_name=...)`, so every request and response is stored in your database.
+3. **The run.** The whole pipeline runs inside one `async with run() as support_run:`, which collects the calls of every specialist, including those made inside the tasks the SDK starts.
+4. **Verification.** `support_run.verify(reply, model=...)` checks the orchestrator's final reply, the one the customer receives: a value is right only if it matches the response it came from, whichever specialist fetched it. A specialist's mistake shows up when it reaches the reply.
+5. **Checking a report.** `check(report)` verifies every proof with Provably's public verifier and recomputes the verdicts and the outcome; it needs no Provably account.
 
-| Specialist | Table | Action Name | Agent ID |
-|---|---|---|---|
-| Order Status | orders | `get_order_status` | `order_status` |
-| Return Policy | policies | `get_return_policy` | `return_policy` |
-| Account Balance | accounts | `get_account_balance` | `account_balance` |
+The specialists and the orchestrator answer in plain text: no output schema or extra code is needed to make them verifiable. The [OpenAI Agents SDK cookbook](../openai_agents/README.md) explains the report fields and the outcomes.
+
+> [!NOTE]
+> If your project lists trusted endpoints, add the local API to them, or its calls are left out of verification and listed as untrusted:
+> `sourcerykit endpoints add http://127.0.0.1:47231`
 
 ---
 
 ## Environment Configuration
-Before running the system, run the interactive setup wizard to configure your SourceryKit project variables automatically:
+
+Run the interactive setup wizard to configure your SourceryKit project:
 
 ```bash
 sourcerykit init
 ```
 
 > [!IMPORTANT]
-> The wizard only configures **SOURCERYKIT_*** variables. It does **not** configure your LLM provider infrastructure keys (like `MODEL_URL` or `MODEL_API_KEY`). Those must still be set up separately in your environment.
+> The wizard configures the SourceryKit project. Set your LLM-provider variables separately:
 
 | Variable | Required | Description |
 |---|---|---|
-| `MODEL_URL` | **yes** | Base URL for the LLM provider (e.g., `https://openrouter.ai/api/v1`). |
-| `MODEL_API_KEY` | **yes** | API authentication token for the LLM provider. |
-| `MODEL_NAME` | **yes** | Model name (e.g., `openai/gpt-4o-mini`). |
+| `MODEL_URL` | **yes** | Base URL of an OpenAI-compatible provider (e.g., `https://openrouter.ai/api/v1`). |
+| `MODEL_API_KEY` | **yes** | API key for the provider. |
+| `MODEL_NAME` | **yes** | The agents' model (e.g., `openai/gpt-4o-mini`). |
+| `SOURCERYKIT_LINKER_URL` | **yes** | Where the model that turns the reply into claims runs: `https://api.anthropic.com` for Claude directly (install `sourcerykit[anthropic]`), or the base URL of an OpenAI-compatible chat API; with OpenRouter, the same as `MODEL_URL`. |
+| `SOURCERYKIT_LINKER_API_KEY` | **yes** | API key for it; with OpenRouter, the same as `MODEL_API_KEY`. |
+| `LINKER_MODEL` | no | The linker model, e.g. `anthropic/claude-haiku-5.5` on OpenRouter; defaults to `MODEL_NAME`. |
 
 ---
 
 ## Execution
 
-1. Install the SDK package:
+1. Install the packages:
    ```bash
-   pip install sourcerykit openai-agents python-dotenv httpx pydantic
+   pip install sourcerykit openai-agents python-dotenv httpx
    ```
-2. Export your LLM-provider keys into your current shell or place them in a local `.env` file:
+2. Export the LLM-provider variables, or put them in a local `.env` file:
    ```bash
    export MODEL_URL="https://openrouter.ai/api/v1"
    export MODEL_API_KEY="sk-or-..."
    export MODEL_NAME="openai/gpt-4o-mini"
+   export SOURCERYKIT_LINKER_URL="https://openrouter.ai/api/v1"
+   export SOURCERYKIT_LINKER_API_KEY="sk-or-..."
+   export LINKER_MODEL="anthropic/claude-haiku-5.5"
    ```
 3. Run the example:
-      ```bash
-      # Standard Validation
-      python agent_run.py
+   ```bash
+   # An honest reply: PASS, or PASS_WITH_NOTES when it states something the responses cannot check
+   python agent_run.py
 
-      # or
-
-      # Hallucination Simulation
-      python agent_run.py --tamper
+   # The return policy specialist has outdated notes: 14 days, no restocking fee
+   python agent_run.py --hallucinate
    ```
+
+With `--hallucinate`, the return policy specialist's instructions carry outdated handbook notes that disagree with the API (30 days, 15% restocking fee); nothing tells it to prefer them. Agents often answer from what they "know" rather than from what their tools return. When it does, the reply is `CAUGHT`: the proofs show the API's 30 days and restocking fee. With `openai/gpt-5-nano`, all 3 of our runs trusted the notes.

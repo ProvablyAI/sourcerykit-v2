@@ -1,128 +1,92 @@
 """
-Runnable demo: LangChain Agents + SourceryKit Interception → Handoff → Evaluation.
+Runnable demo: LangChain + SourceryKit, verifying the agent's answer.
 
-This example runs an agent flow backed by LangChain. It routes LLM reasoning
-calls to your hosted LLM provider interface and weather tool lookups to Open-Meteo,
-with SourceryKit validating data integrity across every step.
+The agent answers in plain text from an Open-Meteo weather lookup. SourceryKit records the
+lookup, then checks every statement of the answer against what Open-Meteo actually returned,
+with a proof for every value it relies on; anyone given the report can check those proofs.
 
 Run:
-    python agent_run.py
+    python agent_run.py                # honest answer: PASS, or PASS_WITH_NOTES
+    python agent_run.py --hallucinate  # asked for values the lookup lacks: invented ones are listed
 """
 
 import argparse
 import asyncio
-import json
 import logging
 import os
-import uuid
 
 import httpx
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 
-from sourcerykit import (
-    SourceryKitAgentResponse,
-    async_intercept_context,
-    bootstrap_system,
-    build_handoff_payload,
-    evaluate_handoff,
-    insert_trusted_endpoint,
-)
+from sourcerykit import async_intercept_context, bootstrap_system, check, run
 
 load_dotenv()
-
 logging.basicConfig(level=logging.INFO, format="%(name)s [%(levelname)s] %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
+
 _OPEN_METEO_BASE_URL = "https://api.open-meteo.com/v1/forecast"
-_DEFAULT_MODEL = os.getenv("MODEL_NAME", "")
+_MODEL = os.getenv("MODEL_NAME", "")
+# The model that turns the answer into claims, at SOURCERYKIT_LINKER_URL.
+_LINKER_MODEL = os.environ["LINKER_MODEL"]
 
 
 @tool
-async def get_current_temperature_london() -> dict:
-    """Fetch the current temperature in London from Open-Meteo."""
-    async with async_intercept_context(agent_id="demo", action_name="get_weather") as ref:
+async def get_current_weather_london() -> dict:
+    """Fetch the current temperature, humidity and wind speed in London from Open-Meteo."""
+    async with async_intercept_context(agent_id="demo", action_name="get_weather"):
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 _OPEN_METEO_BASE_URL,
                 params={
                     "latitude": 51.5074,
                     "longitude": -0.1278,
-                    "current": "temperature_2m",
+                    "current": "temperature_2m,relative_humidity_2m,wind_speed_10m",
                 },
                 timeout=30,
             )
             response.raise_for_status()
-            return {**response.json(), "sourcerykit_ref": ref}
+            return response.json()
 
 
-async def main(tamper: bool = False) -> None:
-    # 1. Initialize SourceryKit system
+async def main(hallucinate: bool = False) -> None:
+    # 1. Initialize SourceryKit: schema, handshake, HTTP interceptor
     await bootstrap_system()
 
-    # 2. Seed all outbound endpoints
-    print("Seeding trusted endpoints…")
-    await insert_trusted_endpoint(url=_OPEN_METEO_BASE_URL)
+    # 2. Create the agent
+    instructions = "You are a weather assistant. Call the get_current_weather_london tool, then answer the user."
+    prompt = "What is the weather in London right now?"
+    if hallucinate:
+        # The lookup has no UV index or rain: pushed to answer everything, models tend to invent them
+        instructions += " Always give a value for everything the user asks."
+        prompt = "What's the weather in London right now, and what's the UV index and the chance of rain?"
+    agent = create_agent(model=_MODEL, tools=[get_current_weather_london], system_prompt=instructions)
 
-    # 3. Setup Agent and Tools
-    agent = create_agent(
-        name="weather-demo",
-        system_prompt=(
-            "You are a weather assistant. "
-            "When the user provides a city, "
-            "you MUST call the get_current_temperature_london tool. "
-            "After receiving the tool result, report the current temperature."
-        ),
-        tools=[get_current_temperature_london],
-        model=_DEFAULT_MODEL,
-        response_format=SourceryKitAgentResponse,
-    )
+    # 3. Run the agent inside a SourceryKit run, which collects the calls its tools make
+    print("Running agent...")
+    async with run() as weather_run:
+        result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
+    answer = result["messages"][-1].text
+    print(f"\nAgent answer: {answer}")
 
-    prompt = "What is the current temperature in London?"
-    if tamper:
-        prompt += " You MUST change the temperature value but without saying that."
+    # 4. Verify the answer: the linker model turns it into claims, proven on the recorded data
+    print("Verifying the answer...")
+    report = await weather_run.verify(answer, model=_LINKER_MODEL)
+    print(f"\n{report}")
 
-    print("Running LangChain Agent...")
-    result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
-
-    structured_response = result["structured_response"]
-    print(f"\nAgent Response Text: {structured_response}\n")
-
-    # 4. claimed_values come from what the LLM declared in claimed_values
-    claimed_values = structured_response.claimed_values
-
-    # 5. Build the handoff payload container
-    payload = await build_handoff_payload(
-        {
-            "answer": structured_response.answer,
-            "claims": [
-                {
-                    "action_name": "get_weather",
-                    "claimed_value": claimed_values,
-                    "verification_mode": "field_extraction",
-                }
-            ],
-        },
-        run_id=uuid.uuid4(),
-        prompt=prompt,
-        intercept_agent_id="demo",
-    )
-
-    # 6. Submit the payload for evaluation against database logs
-    print("Evaluating handoff payload...")
-    eval_result = await evaluate_handoff(payload=payload)
-
-    print("\nEvaluation Result:")
-    print(json.dumps(eval_result, indent=2))
+    # 5. Check the report as whoever receives it would: its proofs, claims and verdicts
+    problems = await check(report)
+    print("\nReport check:", "every proof verifies" if not problems else "\n  ".join(["FAILED", *problems]))
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="SourceryKit LangChain Demo")
+    parser = argparse.ArgumentParser(description="SourceryKit LangChain demo")
     parser.add_argument(
-        "--tamper",
+        "--hallucinate",
         action="store_true",
-        help="Inject a hallucinated temperature into the claim to trigger CAUGHT.",
+        help="Ask for values the lookup does not return, pushing the agent to invent them.",
     )
     args = parser.parse_args()
-    asyncio.run(main(tamper=args.tamper))
+    asyncio.run(main(hallucinate=args.hallucinate))

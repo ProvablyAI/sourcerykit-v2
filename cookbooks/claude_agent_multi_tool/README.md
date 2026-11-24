@@ -1,67 +1,66 @@
-# Claude Agent Multi-Tool
-This example demonstrates SourceryKit's multi-tool-call verification with the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-python). The agent calls the **same tool** (`get_weather`) twice with different cities (London and Paris). Each call produces a unique `sourcerykit_ref` (the database row UUID). The agent's claims reference the correct ref for each city, and the SDK maps each claim to the right intercept.
+# Claude Agent SDK: one tool, several calls
+
+This example verifies an answer built from several calls to the **same tool**. An agent built with the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-python) calls `get_current_weather` once for London and once for Paris, then compares them. Both Open-Meteo responses have the same fields, so a value is only right if it comes from the response for the right city.
 
 ## How It Works
 
-1. **HTTP Interception**: Each `async_intercept_context` invocation generates a unique `sourcerykit_ref` UUID. The tool returns it alongside the response data, so the agent knows which claim maps to which intercept.
-2. **All-Method Trust Gate**: SourceryKit enforces structural target validation checks against your external network endpoints. The external weather lookup endpoint (`api.open-meteo.com`) is explicitly registered via policy seeds (`insert_trusted_endpoint`) before execution.
-3. **Automated Handoff & Evaluation**: The agent groups `claimed_values` by `sourcerykit_ref` and builds one claim per intercept. Each claim's `call_ref` is set to the corresponding `sourcerykit_ref`, so `build_handoff_payload` resolves each claim to the correct intercept row — even when the same `action_name` appears multiple times.
+1. **Recording.** Each tool call makes its Open-Meteo request inside `async_intercept_context`, so both requests and responses are stored in your database. The tool returns the plain response: no reference or extra field is needed.
+2. **The run.** `query()` runs inside `async with run() as weather_run:`, which collects both calls.
+3. **Verification.** `weather_run.verify(answer, model=...)` sends the answer and every recorded call, with its URL, to the linker model. The URL's coordinates tell the calls apart, so each claim names the call it reads, for example London's temperature from the London call. A comparison such as "Paris is warmer, by 1.1 °C" reads both calls and is checked publicly from the two proven values.
+4. **Checking a report.** `check(report)` verifies every proof with Provably's public verifier and recomputes the verdicts and the outcome; it needs no Provably account.
 
-```bash
-Tool: get_weather(London)            Tool: get_weather(Paris)
-  intercept_context → ref_1            intercept_context → ref_2
-  return {..., sourcerykit_ref: ref_1}  return {..., sourcerykit_ref: ref_2}
+```text
+get_current_weather(London) → call_1: {"latitude": 51.5, ..., "current": {"temperature_2m": 6.5, ...}}
+get_current_weather(Paris)  → call_2: {"latitude": 48.9, ..., "current": {"temperature_2m": 7.6, ...}}
 
-Agent output:
-  claimed_values: [
-    {path: "$.current.temperature_2m", value: "15", sourcerykit_ref: ref_1},  ← London
-    {path: "$.current.temperature_2m", value: "22", sourcerykit_ref: ref_2},  ← Paris
-  ]
-
-Claims:
-  claim 1: call_ref=ref_1 → SELECT * FROM intercepts WHERE call_ref = ref_1 → London data ✓
-  claim 2: call_ref=ref_2 → SELECT * FROM intercepts WHERE call_ref = ref_2 → Paris data ✓
+Answer: "Paris is warmer, by 1.1 °C. London: 6.5 °C ..."
+  SUPPORTED 'Paris is warmer, by 1.1 °C'  proven: paris=7.6 (call_2)  london=6.5 (call_1)
+  SUPPORTED '6.5 °C'                      proven: london=6.5 (call_1)
 ```
 
+If the agent swapped the two cities' values, the claims would read each value from its city's call and the answer would be `CAUGHT`. The [OpenAI Agents SDK cookbook](../openai_agents/README.md) explains the report fields, the outcomes and when to list trusted endpoints.
+
+---
 
 ## Environment Configuration
 
-Before running the agent, run the interactive setup wizard to configure your SourceryKit project variables automatically:
+Run the interactive setup wizard to configure your SourceryKit project:
 
 ```bash
 sourcerykit init
 ```
 
 > [!IMPORTANT]
-> The wizard only configures **SOURCERYKIT_*** variables. It does **not** configure your LLM provider infrastructure keys (like `MODEL_NAME` or `ANTHROPIC_API_KEY`). Those must still be set up separately in your environment.
-
-You will also need to set these LLM-provider variables manually:
+> The wizard configures the SourceryKit project. Set your LLM-provider variables separately:
 
 | Variable | Required | Description |
 |---|---|---|
-| `MODEL_NAME` | **yes** | Targeted model architecture identifier string passed to create_agent (e.g., `claude-haiku-4-5`). |
-| `ANTHROPIC_API_KEY` | **yes** | API authentication token. |
+| `ANTHROPIC_API_KEY` | no | API key for Claude; the Claude Agent SDK can also use your Claude Code login. |
+| `MODEL_NAME` | no | The agent's model; defaults to `claude-haiku-5-5`. |
+| `SOURCERYKIT_LINKER_URL` | **yes** | Where the model that turns the answer into claims runs: `https://api.anthropic.com` for Claude directly, or the base URL of an OpenAI-compatible chat API such as `https://openrouter.ai/api/v1`. |
+| `SOURCERYKIT_LINKER_API_KEY` | no | API key for it; for Claude, it may be left unset when `ANTHROPIC_API_KEY` is set. |
+| `LINKER_MODEL` | no | The linker model, e.g. `claude-haiku-5-5` on Claude's API or `anthropic/claude-haiku-5.5` on OpenRouter; defaults to `MODEL_NAME`. |
 
 ---
 
 ## Execution
 
-1. Install the SDK package:
+1. Install the packages:
    ```bash
-   pip install sourcerykit claude-agent-sdk python-dotenv httpx pydantic
+   pip install "sourcerykit[anthropic]" claude-agent-sdk python-dotenv httpx
    ```
-2. Export your LLM-provider keys into your current shell or place them in a local `.env` file:
+2. Export the LLM-provider variables, or put them in a local `.env` file:
    ```bash
-   export MODEL_NAME="claude-haiku-4-5"
    export ANTHROPIC_API_KEY="sk-ant-..."
+   export SOURCERYKIT_LINKER_URL="https://api.anthropic.com"
    ```
 3. Run the example:
-      ```bash
-      # Standard Validation — both claims PASS
-      python agent_run.py
+   ```bash
+   # An honest comparison: PASS, or PASS_WITH_NOTES when it states something the responses cannot check
+   python agent_run.py
 
-      # or
-
-      # Hallucination Simulation — swap refs → CAUGHT
-      python agent_run.py --tamper
+   # Asked for the UV index and the chance of rain as well, which the responses do not hold
+   python agent_run.py --hallucinate
    ```
+
+With `--hallucinate`, the agent is told to answer everything; nothing tells it to make anything up. Whether it invents the missing values is up to the model: when it does, they are listed as not verifiable. `claude-haiku-5-5` usually says they are not available.
