@@ -89,16 +89,14 @@ async def _verify(
         sent.append(messages)
         return claims if isinstance(claims, str) else json.dumps({"claims": claims})
 
-    async def is_trusted(url: str) -> bool:
-        return url in trusted
-
     recorded = [(CALL, WEATHER_URL, RESPONSE), *also_recorded]
     run = verify_module.Run()
     run.calls.extend(call_id for call_id, _, _ in recorded)
     with (
         patch.object(verify_module, "_load_calls", AsyncMock(return_value=recorded)),
-        patch.object(verify_module, "list_all_trusted_endpoints_detailed", AsyncMock(return_value=list(trusted))),
-        patch.object(verify_module, "is_endpoint_trusted", is_trusted),
+        patch.object(
+            verify_module, "list_all_trusted_endpoints_detailed", AsyncMock(return_value=[{"url": u} for u in trusted])
+        ),
         patch.object(verify_module, "_check", check),
         patch.object(verify_module, "_complete", complete),
         patch.object(verify_module, "get_settings", return_value=MagicMock(org_id=ORG)),

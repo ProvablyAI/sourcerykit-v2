@@ -1,12 +1,12 @@
+import posixpath
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import SplitResult, urlparse, urlsplit
 
 from sourcerykit.config import get_settings
 from sourcerykit.db._engine import get_engine
 from sourcerykit.db._trusted_endpoints import (
     delete_trusted_endpoint,
     select_active_trusted_endpoints,
-    select_trusted_endpoint_prefix,
 )
 from sourcerykit.db._trusted_endpoints import (
     insert_trusted_endpoint as db_insert_trusted_endpoint,
@@ -37,28 +37,31 @@ def sanitize_and_extract_trusted_url(raw_url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}{normalized_path}"
 
 
-async def is_endpoint_trusted(url: str) -> bool:
+def endpoint_matches(url: str, endpoint: str) -> bool:
+    """Whether ``url`` is ``endpoint`` or below it: the same scheme, host and port, and the
+    endpoint's path or a path under it.
+
+    ``https://api.example.com/v1`` covers ``/v1``, ``/v1/forecast`` and ``/v1?city=x``, but not
+    ``/v10``, ``/v1/../admin``, or a host that only starts with ``api.example.com``.
     """
-    Validates if a given URL is registered as an active trusted endpoint
-    for the current organization.
-    """
-    # Sanitize input to isolate the scheme + netloc
-    parsed_url = sanitize_and_extract_trusted_url(url)
-
-    org_id = get_settings().org_id
-    engine = get_engine()
-
-    # Build SELECT statement
-    stmt = select_trusted_endpoint_prefix(org_id, parsed_url)
-
-    # Execute
+    call, listed = urlsplit(url.strip()), urlsplit(endpoint)
     try:
-        async with engine.connect() as conn:
-            result = await conn.execute(stmt)
-            return bool(result.scalar())
-    except Exception as e:
-        _log.error("is_endpoint_trusted_db_error", url=url, error=str(e))
-        raise SourceryKitStorageError("Failed to query trusted endpoints") from e
+        if (call.scheme.lower(), call.hostname, _port(call)) != (listed.scheme.lower(), listed.hostname, _port(listed)):
+            return False
+    except ValueError:  # a port that is not a number
+        return False
+    prefix = listed.path.rstrip("/")
+    path = posixpath.normpath(call.path) if call.path else ""
+    return not prefix or path == prefix or path.startswith(prefix + "/")
+
+
+def _port(parts: SplitResult) -> int | None:
+    return parts.port or {"http": 80, "https": 443}.get(parts.scheme.lower())
+
+
+async def is_endpoint_trusted(url: str) -> bool:
+    """Whether ``url`` is a listed trusted endpoint of the current organization, or below one."""
+    return any(endpoint_matches(url, entry["url"]) for entry in await list_all_trusted_endpoints_detailed())
 
 
 async def insert_trusted_endpoint(*, url: str, display_label: str | None = None) -> None:
@@ -127,14 +130,12 @@ async def remove_trusted_endpoint(*, url: str) -> None:
     # Sanitize the URL string
     clean_url = sanitize_and_extract_trusted_url(url)
 
-    org_id = get_settings().org_id
-    engine = get_engine()
-
-    if not await is_endpoint_trusted(clean_url):
+    if clean_url not in [entry["url"] for entry in await list_all_trusted_endpoints_detailed()]:
         raise SourceryKitTrustError(f"Endpoint '{clean_url}' is not trusted")
 
     # Remove statement
-    stmt = delete_trusted_endpoint(org_id, clean_url)
+    stmt = delete_trusted_endpoint(get_settings().org_id, clean_url)
+    engine = get_engine()
 
     try:
         async with engine.begin() as conn:

@@ -25,7 +25,7 @@ Outcome: PASS   (claims by linker:anthropic/claude-haiku-5.5)
 
 ## How the Registry Works
 - **Per organization**: Endpoints are stored in the `trusted_endpoints` table of your database, for your Provably organization.
-- **Prefix match**: An endpoint is stored as its scheme, host and path (a trailing `/` removed); a call is trusted when its URL starts with a listed endpoint. `https://api.example.com` trusts every path on that host, `https://api.example.com/v1` only those under `/v1`. A URL given without a scheme is stored as `https://`.
+- **Matching**: An endpoint is stored as its scheme, host and path (a trailing `/` removed; a URL given without a scheme is stored as `https://`). A call is trusted when it has the same scheme, host and port, and the endpoint's path or a path under it. `https://api.example.com` trusts every path on that host; `https://api.example.com/v1/forecast` trusts `/v1/forecast`, `/v1/forecast/daily` and `/v1/forecast?city=x`, but not `/v1/forecasts`. A host that only starts with a listed one, such as `api.example.com.evil.net`, is not trusted.
 - **Read at verification**: The list is read when `verify` runs, so changes apply to the next verification without a restart.
 
 ## Configuration
@@ -49,6 +49,7 @@ Adds an endpoint to the registry. If it is already registered, nothing changes.
 #### Check whether a URL is trusted
 ```python
 await sourcerykit.trusted_endpoints.is_endpoint_trusted(url: str) -> bool
+sourcerykit.trusted_endpoints.endpoint_matches(url: str, endpoint: str) -> bool  # the rule, for one endpoint
 ```
 
 #### List the trusted endpoints

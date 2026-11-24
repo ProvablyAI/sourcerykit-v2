@@ -35,7 +35,7 @@ from sourcerykit.facts import Fact, flatten
 from sourcerykit.intercept._self_egress import provably_self_egress
 from sourcerykit.intercept.interceptor import _ctx_run_calls
 from sourcerykit.schemas.outcome import Outcome
-from sourcerykit.trusted_endpoints import is_endpoint_trusted, list_all_trusted_endpoints_detailed
+from sourcerykit.trusted_endpoints import endpoint_matches, list_all_trusted_endpoints_detailed
 
 
 class StepResult(BaseModel):
@@ -272,9 +272,10 @@ async def _by_trust(recorded: list[tuple[UUID, str, str]]) -> tuple[list[tuple[U
     With no trusted endpoints, every recorded call counts. Once a project lists some, only calls to
     them do, so a tool whose URL the model can steer cannot bring in data of its own choosing.
     """
-    if not recorded or not await list_all_trusted_endpoints_detailed():
+    listed = [entry["url"] for entry in await list_all_trusted_endpoints_detailed()] if recorded else []
+    if not listed:
         return recorded, []
-    trusted = await asyncio.gather(*(is_endpoint_trusted(url) for _, url, _ in recorded))
+    trusted = [any(endpoint_matches(url, endpoint) for endpoint in listed) for _, url, _ in recorded]
     evidence = [call for call, ok in zip(recorded, trusted, strict=True) if ok]
     return evidence, [url for (_, url, _), ok in zip(recorded, trusted, strict=True) if not ok]
 

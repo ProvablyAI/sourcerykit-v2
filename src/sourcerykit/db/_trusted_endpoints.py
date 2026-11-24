@@ -3,7 +3,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import Delete, Insert, Select, and_, delete, exists, literal, select
+from sqlalchemy import Delete, Insert, Select, and_, delete, select
 from sqlalchemy.dialects.postgresql import insert
 
 from sourcerykit.db._schema import trusted_endpoints
@@ -12,31 +12,6 @@ _ACTIVE = and_(
     trusted_endpoints.c.entry_type == "endpoint",
     trusted_endpoints.c.revoked_at.is_(None),
 )
-
-
-def select_trusted_endpoint_prefix(org_id: uuid.UUID, incoming_url: str) -> Select[tuple[bool]]:
-    """Fast-path existence check: scalar result is a boolean.
-
-    Equivalent raw SQL::
-
-        SELECT EXISTS (
-            SELECT 1 FROM trusted_endpoints
-            WHERE org_id = :org_id
-              AND :incoming_url LIKE (normalized_url || '%')
-              AND entry_type = 'endpoint'
-              AND revoked_at IS NULL
-        )
-    """
-    return select(
-        exists().where(
-            and_(
-                trusted_endpoints.c.org_id == org_id,
-                # Checks if the incoming_url starts with the stored normalized_url
-                literal(incoming_url).like(trusted_endpoints.c.normalized_url + "%"),
-                _ACTIVE,
-            )
-        )
-    )
 
 
 def select_active_trusted_endpoints(org_id: uuid.UUID) -> Select[tuple[Any, ...]]:

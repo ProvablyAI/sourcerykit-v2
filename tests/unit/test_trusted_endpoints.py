@@ -7,8 +7,10 @@ import pytest
 
 from sourcerykit.errors import SourceryKitStorageError, SourceryKitTrustError
 from sourcerykit.trusted_endpoints.service import (
+    endpoint_matches,
     insert_trusted_endpoint,
     is_endpoint_trusted,
+    remove_trusted_endpoint,
     sanitize_and_extract_trusted_url,
 )
 
@@ -87,24 +89,39 @@ def _make_begin_mock(raise_exc: Exception | None = None) -> MagicMock:
     return mock_engine
 
 
-class TestIsEndpointTrusted:
-    async def test_returns_true_when_db_says_trusted(self) -> None:
-        mock_engine = _make_connect_mock(scalar_return=True)
-        with (
-            patch("sourcerykit.trusted_endpoints.service.get_engine", return_value=mock_engine),
-            patch("sourcerykit.trusted_endpoints.service.get_settings") as ms,
-        ):
-            ms.return_value.org_id = _ORG
-            assert await is_endpoint_trusted("https://trusted.example.com") is True
+@pytest.mark.parametrize(
+    ("url", "endpoint", "trusted"),
+    [
+        ("https://api.example.com/v1/forecast", "https://api.example.com", True),
+        ("https://API.Example.com/x", "https://api.example.com", True),  # hosts ignore case
+        ("https://api.example.com:443/x", "https://api.example.com", True),  # the default port
+        ("https://api.example.com.evil.net/x", "https://api.example.com", False),  # only starts with the host
+        ("https://api.example.com@evil.net/x", "https://api.example.com", False),  # userinfo, then another host
+        ("https://api.myXsite.com/x", "https://api.my_site.com", False),  # _ is not a wildcard
+        ("http://api.example.com/x", "https://api.example.com", False),  # another scheme
+        ("https://api.example.com:8443/x", "https://api.example.com", False),  # another port
+        # A listed path covers itself and what is under it
+        ("https://api.example.com/v1/forecast", "https://api.example.com/v1/forecast", True),
+        ("https://api.example.com/v1/forecast/", "https://api.example.com/v1/forecast", True),
+        ("https://api.example.com/v1/forecast?city=x", "https://api.example.com/v1/forecast", True),
+        ("https://api.example.com/v1/forecast/daily", "https://api.example.com/v1/forecast", True),
+        ("https://api.example.com/v1/forecasts", "https://api.example.com/v1/forecast", False),
+        ("https://api.example.com/v10/x", "https://api.example.com/v1", False),
+        ("https://api.example.com/v1/../admin", "https://api.example.com/v1", False),
+        ("https://api.example.com/", "https://api.example.com/v1", False),
+        ("https://api.example.com:notaport/v1", "https://api.example.com/v1", False),
+    ],
+)
+def test_endpoint_matches(url: str, endpoint: str, trusted: bool) -> None:
+    assert endpoint_matches(url, endpoint) is trusted
 
-    async def test_returns_false_when_db_says_not_trusted(self) -> None:
-        mock_engine = _make_connect_mock(scalar_return=False)
-        with (
-            patch("sourcerykit.trusted_endpoints.service.get_engine", return_value=mock_engine),
-            patch("sourcerykit.trusted_endpoints.service.get_settings") as ms,
-        ):
-            ms.return_value.org_id = _ORG
-            assert await is_endpoint_trusted("https://untrusted.example.com") is False
+
+class TestIsEndpointTrusted:
+    async def test_a_url_under_a_listed_endpoint_is_trusted(self) -> None:
+        listed = AsyncMock(return_value=[{"url": "https://other.example.com"}, {"url": "https://api.example.com/v1"}])
+        with patch("sourcerykit.trusted_endpoints.service.list_all_trusted_endpoints_detailed", listed):
+            assert await is_endpoint_trusted("https://api.example.com/v1/path?foo=bar") is True
+            assert await is_endpoint_trusted("https://api.example.com/v2/path") is False
 
     async def test_raises_storage_error_on_db_failure(self) -> None:
         mock_engine = _make_connect_mock(raise_exc=RuntimeError("db down"))
@@ -116,20 +133,18 @@ class TestIsEndpointTrusted:
             with pytest.raises(SourceryKitStorageError):
                 await is_endpoint_trusted("https://example.com")
 
-    async def test_url_is_sanitized_before_query(self) -> None:
-        """A URL with a path and query string should be sanitized before lookup."""
-        mock_engine = _make_connect_mock(scalar_return=True)
+
+class TestRemoveTrustedEndpoint:
+    async def test_only_a_listed_endpoint_can_be_removed(self) -> None:
+        """A path under a listed endpoint is trusted, but there is no such entry to remove."""
+        listed = AsyncMock(return_value=[{"url": "https://api.example.com"}])
         with (
-            patch("sourcerykit.trusted_endpoints.service.get_engine", return_value=mock_engine),
+            patch("sourcerykit.trusted_endpoints.service.list_all_trusted_endpoints_detailed", listed),
             patch("sourcerykit.trusted_endpoints.service.get_settings") as ms,
-            patch("sourcerykit.trusted_endpoints.service.select_trusted_endpoint_prefix") as mock_stmt,
         ):
             ms.return_value.org_id = _ORG
-            mock_stmt.return_value = MagicMock()
-            await is_endpoint_trusted("https://example.com/v1/path?foo=bar")
-            # Sanitized URL passed to the DB helper should strip query
-            called_url = mock_stmt.call_args[0][1]
-            assert "?" not in called_url
+            with pytest.raises(SourceryKitTrustError):
+                await remove_trusted_endpoint(url="https://api.example.com/v1")
 
 
 # ---------------------------------------------------------------------------

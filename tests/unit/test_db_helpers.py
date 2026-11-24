@@ -32,17 +32,6 @@ class TestInsertIntercept:
         assert "RETURNING" in compiled.upper() or "returning" in compiled.lower()
 
 
-class TestSelectTrustedEndpointPrefix:
-    def test_returns_select_object(self) -> None:
-        from sqlalchemy.sql.selectable import Select
-
-        from sourcerykit.db._trusted_endpoints import select_trusted_endpoint_prefix
-
-        org_id = uuid.uuid4()
-        stmt = select_trusted_endpoint_prefix(org_id, "https://example.com")
-        assert isinstance(stmt, Select)
-
-
 class TestSelectActiveTrustedEndpoints:
     def test_returns_select_object(self) -> None:
         from sqlalchemy.sql.selectable import Select
