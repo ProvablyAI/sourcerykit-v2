@@ -1,9 +1,10 @@
 # SourceryKit
 
-> Python SDK for Provably: makes AI agent answers verifiable. Records an agent's
-> outbound HTTP calls, enforces endpoint allow-lists, and checks each claimed value
-> against the data actually fetched, with a proof anyone can verify. Mismatched or
-> tampered values are CAUGHT, not shipped. Async; supports httpx, aiohttp, requests.
+> Python SDK for Provably: makes AI agent answers verifiable. Records the HTTP calls an
+> agent's tools make, then checks every statement of the agent's plain-text answer against
+> what those calls returned, with a proof for every value that anyone can verify. A
+> statement the data contradicts is CAUGHT, not shipped. Async; supports httpx, aiohttp,
+> requests.
 
 ## Start
 
@@ -11,20 +12,25 @@
 
 ## Docs
 
-- [Onboarding & setup (one-time, needs a human)](docs/onboarding.md)
-- [End-to-end walkthrough](docs/example.md)
-- [API reference](docs/src/api.md)
-- [CLI reference](docs/cli.md)
-- [Architecture](docs/architecture.md)
-- [Intercepting HTTP calls](docs/intercept.md)
-- [Handoff payload & verdicts](docs/handoff.md)
-- [Trusted endpoints](docs/trusted-endpoints.md)
+- [Onboarding & setup (one-time, needs a human)](docs/getting_started/onboarding.md)
+- [End-to-end walkthrough](docs/getting_started/end-to-end-walkthrough.md)
+- [CLI reference](docs/getting_started/cli.md)
+- [Public API](src/sourcerykit/__init__.py)
+- [Architecture](docs/pillars/architecture.md)
+- [Recording HTTP calls](docs/pillars/interceptor.md)
+- [Verification, reports & proofs](docs/pillars/verification.md)
+- [Trusted endpoints](docs/pillars/trusted-endpoints.md)
+- [Migration guides](docs/migrations/README.md)
 
 ## Cookbooks (runnable)
 
-- [OpenAI Agents SDK](cookbooks/openai_agents/) — structured output via `output_type`
-- [Claude Agent SDK](cookbooks/claude_agent/) — structured output via `output_format` json_schema
-- [LangChain](cookbooks/langchain_agent/) — structured output via `response_format`
+- [OpenAI Agents SDK](cookbooks/openai_agents/) — one agent; the report explained
+- [Claude Agent SDK](cookbooks/claude_agent/) — in-process MCP tool
+- [LangChain](cookbooks/langchain_agent/) — `create_agent`
+- [Claude Agent SDK, multi-tool](cookbooks/claude_agent_multi_tool/) — one tool called twice
+- [OpenAI Agents SDK, multi-agent](cookbooks/openai_agents_multi_agent/) — orchestrator and specialists
+- [LangGraph](cookbooks/langgraph_multi_agent/) — verify, then heal
+- [CrewAI](cookbooks/crewai_multi_agent/) — a crew, verify, then remediate
 
 ## Install
 

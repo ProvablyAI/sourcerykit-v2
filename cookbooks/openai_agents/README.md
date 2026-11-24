@@ -72,4 +72,4 @@ sourcerykit init
    python agent_run.py --hallucinate
    ```
 
-With `--hallucinate`, the agent is asked for values Open-Meteo did not return here and told to answer everything; nothing tells it to make anything up. Whether it invents them is up to the model: when it does, the invented values are listed as not verifiable; when it says they are not available, those statements are. With `openai/gpt-5-nano`, all 5 of our runs invented them.
+With `--hallucinate`, the agent is asked for values Open-Meteo did not return here and told to answer everything; nothing tells it to make anything up. Whether it invents them is up to the model: when it does, the invented values are listed as not verifiable; when it says they are not available, those statements are. With `openai/gpt-5-nano`, 5 of our 6 runs invented them.

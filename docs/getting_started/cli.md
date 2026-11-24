@@ -28,8 +28,6 @@ Run `sourcerykit --help` to see all available commands.
 | [`sandbox create`](#sourcerykit-sandbox-create) | Create or retrieve a hosted sandbox database |
 | [`sandbox status`](#sourcerykit-sandbox-status) | Show sandbox status and connection URI |
 | [`sandbox delete`](#sourcerykit-sandbox-delete) | Delete the sandbox database |
-| [`trace list`](#sourcerykit-trace-list) | Show all traces |
-| [`trace show`](#sourcerykit-trace-show) | Show trace details and intercepts |
 
 ---
 
@@ -72,7 +70,7 @@ sourcerykit init [--postgres-url URL] [--project-name NAME] [--sandbox] [--org-i
 - Account login (browser OAuth)
 - Sandbox database provisioning (or custom PostgreSQL with `--postgres-url`)
 - Project naming
-- Bootstrap resource creation
+- Bootstrap resource creation: the `facts` table, registered with the QEDB middleware as the collection `<project>-facts`
 
 **Input:** Browser-based OAuth login; then database and project name prompts (or flags).
 
@@ -115,8 +113,7 @@ sourcerykit init \
  Local config (.env):
    SOURCERYKIT_PROJECT_NAME    = my-project
    SOURCERYKIT_POSTGRES_URL    = postgresql://user:***@host:5432/db
-   SOURCERYKIT_COLLECTION_ID   = col_abc123
-   SOURCERYKIT_INTEGRATION_KEY = ***********************************1234
+   SOURCERYKIT_FACTS_COLLECTION_ID = 01a2096b-a3c9-7901-a2be-40482934dc51
 ```
 
 ---
@@ -142,8 +139,7 @@ sourcerykit doctor [--fix]
 2. Database connectivity (detects sandbox vs personal)
 3. Project name presence
 4. Bootstrap IDs presence
-5. Collection and resource ID verification
-6. Integration key format
+5. Facts collection and resource ID verification
 
 **Example output (all checks pass):**
 ```bash
@@ -153,10 +149,9 @@ sourcerykit doctor [--fix]
   ✅ Database: Sandbox database (postgresql://user:***@host:5432/db)
   ✅ Project name: 'my-project'
   ✅ Bootstrap IDs: All bootstrap IDs present
-  ✅ Collection + IDs: Collection 'my-project' verified (middleware, db, schema, table, collection)
-  ✅ Integration: Integration key format valid
+  ✅ Collection + IDs: Collection 'my-project-facts' verified (middleware, db, schema, table, collection)
 
-All 6 checks passed!
+All 5 checks passed!
 ```
 
 **Example output (some checks fail):**
@@ -168,9 +163,8 @@ All 6 checks passed!
   ✅ Project name: 'my-project'
   ❌ Bootstrap IDs: Missing: middleware_id, database_id — run 'sourcerykit doctor --fix'
   ❌ Collection + IDs: Bootstrap IDs missing — run 'sourcerykit doctor --fix'
-  ❌ Integration: SOURCERYKIT_INTEGRATION_KEY is missing — run 'sourcerykit doctor --fix'
 
-2/6 checks passed — run 'sourcerykit init' to fix
+1/5 checks passed — run 'sourcerykit init' to fix
 ```
 
 ---
@@ -483,107 +477,6 @@ sourcerykit config set --postgres-url "postgresql://user:pass@newhost:5432/db"
 ```
 
 **Output:** Saves changes and re-bootstraps if database or project name changed.
-
----
-
-### `sourcerykit trace`
-
-View and inspect traces (recorded agent actions and HTTP intercepts).
-
-#### Subcommands
-
-##### `sourcerykit trace list`
-
-Show all traces with intercept outcome counts.
-
-```bash
-sourcerykit trace list [--limit N] [--page P]
-```
-
-**Options:**
-| Option | Description |
-|--------|-------------|
-| `--limit` / `-n` | Rows per page (default: 20) |
-| `--page` / `-p` | Page number, 1-based (default: 1) |
-
-**Example output:**
-```bash
-                              Traces
-┌──────────────────────────────────────┬──────────────┬─────────────────────┬───────┬────────┬───────┐
-│ ID                                   │ Task         │ Created             │  Pass │ Caught │ Error │
-├──────────────────────────────────────┼──────────────┼─────────────────────┼───────┼────────┼───────┤
-│ 123e4567-e89b-12d3-a456-426614174000 │ get_data     │ 2026-06-30 10:00:00 │     2 │      0 │     0 │
-└──────────────────────────────────────┴──────────────┴─────────────────────┴───────┴────────┴───────┘
-```
-
----
-
-##### `sourcerykit trace show`
-
-Show details of a single trace and its intercepts.
-
-```bash
-sourcerykit trace show <ID> [--save-proof] [--ui/--no-ui]
-```
-
-**Arguments:**
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `ID` | Yes | Trace ID (UUID) or unambiguous prefix |
-
-**Options:**
-| Option | Description |
-|--------|-------------|
-| `--save-proof` | Download and save proofs to `.provably` files |
-| `--ui` / `--no-ui` | Open interactive dashboard in browser (default: `--ui`). Use `--no-ui` for CLI output. |
-
-**Example (CLI output):**
-```bash
-sourcerykit trace show 123e4567 --no-ui
-```
-
-**Example output (CLI):**
-```bash
-╭─ get_data ────────────────────────────────────────────────────╮
-│ ID: 123e4567-e89b-12d3-a456-426614174000  Created: 2026-06-30 │
-│ 2 PASS  0 CAUGHT  0 ERROR                                     │
-│                                                                │
-│ Answer                                                      │
-│ Fetched weather data from the API and extracted temperature.   │
-╰────────────────────────────────────────────────────────────────╯
-
-╭─ #1 get_data PASS ────────────────────────────────────────────╮
-│  Source: https://api.example.com/data                          │
-│  Mode:   field_extraction                                      │
-│  Query:  https://provably.ai/query/abc123                      │
-│                                                                │
-│  ✓ Verified Values                                             │
-│    temperature: 72                                             │
-│                                                                │
-│  ── Query Details ──                                           │
-│  SQL:    SELECT * FROM intercepts WHERE ...                    │
-│  Proof:                                                         │
-│              Status:     verified                               │
-│              Verified:   true                                   │
-│              Exec time:  45ms                                   │
-│  Result:                                                        │
-│  {                                                             │
-│    "field": "value1"                                           │
-│  }                                                             │
-╰────────────────────────────────────────────────────────────────╯
-```
-
-**Example (browser dashboard):**
-```bash
-sourcerykit trace show 123e4567
-```
-
-Opens the interactive dashboard filtered to the given trace.
-
-**Error (trace not found):**
-```bash
-No trace found matching prefix "abc123".
-```
 
 ---
 

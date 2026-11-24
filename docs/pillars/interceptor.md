@@ -1,43 +1,48 @@
 # Interceptor
-The Interceptor acts as an automated network recorder and policy enforcer for Python agents. It hooks into outbound HTTP calls to ensure every network interaction is observed, verified, and audited without requiring modifications to your application's core logic.
+The Interceptor records the HTTP calls your agent's tools make. It hooks into outbound HTTP calls without changes to your tools' HTTP code, and stores each request with the exact response text, which is what [verification](https://sourcerykit.provably.ai/docs/pillars/verification) checks an answer against.
 
 ## Core Functions
-The Interceptor patches popular Python HTTP libraries (including `httpx`, `aiohttp` and `requests`) to evaluate and record network traffic:
+`bootstrap_system()` patches the popular Python HTTP libraries (`httpx`, `aiohttp` and `requests`) for the whole process:
 
-- **Policy Enforcement**: Before a request leaves the process, its destination URL is verified against the trusted endpoints registry. Untrusted requests are blocked immediately.
-- **Audit Logging**: Every processed request and response is logged into the append-only `intercepts` database table, creating a tamper-evident audit trail for proof generation.
+- **Recording**: A call made inside `async_intercept_context` is stored in the `intercepts` table: the URL, the method, the request parameters and body, the response text exactly as received, and its SHA-256 hash.
+- **Scoping**: `run()` collects the ids of the calls recorded inside it, including those made by the tasks it starts, so `verify` checks an answer against the calls of that run only.
+
+Calls made outside an intercept context are not recorded, and neither are SourceryKit's own calls (to Provably and to the linker model).
 
 ## Example
 
-Initialize the SDK at application startup to automatically enable global HTTP interception:
-
 ```python
-import sourcerykit
 import httpx
+import sourcerykit
 
-# Initialize runtime, database schema, and interceptors
+# Once, at startup: schema, handshake, HTTP interceptor
 await sourcerykit.bootstrap_system()
 
-# Intercept and tag outbound network activity — returns a unique ref
-async with sourcerykit.async_intercept_context(agent_id="demo", action_name="get_data") as ref:
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            "https://api.example.com/data",
-            params={"query": "example_parameter"}
-        )
-        data = response.json()
 
-# Return ref alongside data so the agent can map claims to this intercept
-return {**data, "sourcerykit_ref": ref}
+async def get_data() -> dict:
+    # Inside a tool: the calls made in this block are recorded, tagged with the agent and action
+    async with sourcerykit.async_intercept_context(agent_id="demo", action_name="get_data"):
+        async with httpx.AsyncClient() as client:
+            response = await client.get("https://api.example.com/data", params={"query": "example"})
+    return response.json()  # the tool returns the plain response: nothing to add for verification
+
+
+async with sourcerykit.run() as r:
+    data = await get_data()  # or run an agent whose tools call get_data
+print(r.calls)  # the ids of the recorded calls
 ```
 
 ## Key Features
 
-- **Context-Aware Auditing**: Binds metadata (like `agent_id` and `action_name`) directly to outbound requests, mapping raw network traffic to specific agent actions.
-- **Process-Wide Interception**: Automatically captures and evaluates traffic across all instances of supported HTTP libraries within the running Python process once initialized.
+- **Context-aware tagging**: `agent_id` and `action_name` are stored with every call, mapping raw traffic to the agent action that made it. They label the calls; which calls an answer is checked against is set by `run()`.
+- **Any number of calls**: The same tool can be called many times in one run; verification tells the calls apart by their URL and content.
+- **Process-wide interception**: Once initialized, every instance of a supported HTTP library in the process is covered.
+- **Streams**: A streamed `httpx` response is recorded once it has been read to the end.
 
 ## Limitations
 
-- **Library Dependencies**: Only network calls made via supported, patched Python libraries are intercepted. Support for additional Python HTTP libraries is currently under development.
+- **Supported libraries**: Only calls made through `httpx`, `aiohttp` and `requests` are recorded.
+- **Streams through `aiohttp` and `requests`**: A streamed response (an event stream, a chunked `aiohttp` response, or `requests` with `stream=True`) is recorded as a placeholder, not its content, so it cannot back a statement. Use `httpx` for those calls.
+- **JSON responses**: Any response is recorded, but verification reads JSON: a response that is not JSON gives no facts, so statements about it are not verifiable.
 
-For details on managing allowed destinations, see [trusted-endpoints](https://sourcerykit.provably.ai/docs/pillars/trusted-endpoints). To see how these logs are used to verify claims, see [architecture](https://sourcerykit.provably.ai/docs/pillars/architecture).
+To keep calls to some endpoints out of verification, see [trusted-endpoints](https://sourcerykit.provably.ai/docs/pillars/trusted-endpoints). To see how the recorded calls are used, see [verification](https://sourcerykit.provably.ai/docs/pillars/verification).

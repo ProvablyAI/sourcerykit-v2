@@ -6,9 +6,10 @@
 > copy is the source of truth — read it there when in doubt.
 
 SourceryKit is the Python SDK for [Provably](https://provably.ai): it makes agent answers
-verifiable. It records an agent's outbound HTTP calls, enforces endpoint policies, and checks
-each claimed value against what those calls actually returned, with a proof anyone can
-verify. A hallucinated value is **caught** instead of shipped.
+verifiable. It records the HTTP calls an agent's tools make, then checks every statement of
+the agent's plain-text answer against what those calls actually returned, with a proof for
+every value it relies on that anyone can verify. A statement the data contradicts is
+**caught** instead of shipped.
 
 > [!IMPORTANT]
 > **Setup is scriptable — prefer the `sourcerykit init` CLI over hand-writing config.**
@@ -21,72 +22,83 @@ verify. A hallucinated value is **caught** instead of shipped.
 | Your situation | Do this |
 |---|---|
 | First time — no Provably credentials yet | Run the `sourcerykit init` setup (see the note above) → [onboarding.md](docs/getting_started/onboarding.md). |
-| Integrating SourceryKit into an agent | Open the closest cookbook ([below](#cookbooks-runnable-examples)), mirror it, then swap in your own tool and claims. |
+| Integrating SourceryKit into an agent | Open the closest cookbook ([below](#cookbooks-runnable-examples)), mirror it, then swap in your own tools. |
 | Want to see one full run first | [end-to-end-walkthrough.md](docs/getting_started/end-to-end-walkthrough.md). |
-| Got an unexpected `CAUGHT` or `ERROR` | Read [the outcomes below](#the-flow-at-a-glance), then [handoff.md](docs/pillars/handoff.md). |
-| Need a signature, type, or CLI flag | [public API](src/sourcerykit/__init__.py) · [handoff fields](docs/pillars/handoff.md) · [cli.md](docs/getting_started/cli.md) |
+| Got an unexpected `CAUGHT`, `PASS_WITH_NOTES` or `ERROR` | Read [the outcomes below](#the-flow-at-a-glance), then [verification.md](docs/pillars/verification.md). |
+| Need a signature, type, or CLI flag | [public API](src/sourcerykit/__init__.py) · [verification.md](docs/pillars/verification.md) · [cli.md](docs/getting_started/cli.md) |
 | Record or inspect outbound HTTP calls | [interceptor.md](docs/pillars/interceptor.md) |
-| Allow-list outbound endpoints | [trusted-endpoints.md](docs/pillars/trusted-endpoints.md) |
+| Keep calls to some endpoints out of verification | [trusted-endpoints.md](docs/pillars/trusted-endpoints.md) |
 | Understand how the pieces fit | [architecture.md](docs/pillars/architecture.md) |
-| Migrate from the old `provably` SDK | [docs/migrations/v1_0/v1_0.md](docs/migrations/v1_0/v1_0.md) |
+| Upgrade from an earlier version | [migration guides](docs/migrations/README.md) |
 
-**Cookbooks are the ground truth — mirror one, never hand-roll the claim.** Everything else
-is supporting docs; load only what a task needs.
+**Cookbooks are the ground truth — mirror one.** Everything else is supporting docs; load
+only what a task needs.
 
 ## Cookbooks (runnable examples)
 
-Each is a full runnable agent: `python agent_run.py` for a `PASS`; add `--tamper` to corrupt
-a claim and watch `evaluate_handoff` return `CAUGHT`. Every claimed value carries a
-`sourcerykit_ref` (copied from the tool's output) that maps it to the exact recorded call —
-so the same tool can be called many times, and separate agents can each own a stage.
+Each is a full runnable agent: `python agent_run.py` for an honest answer (`PASS`, or
+`PASS_WITH_NOTES` when it states something the data cannot check); add `--hallucinate` to give
+the agent a realistic reason to state something the data does not back, and watch the report
+list or catch it. Whether the agent takes the bait is up to the model: each README gives the
+rate we measured.
 
-**Framework not listed?** The flow is identical everywhere — only the structured-output
-binding is framework-specific. Copy the closest cookbook and change just that binding; each
-cookbook's README covers its own wiring.
+**Framework not listed?** The flow is identical everywhere — only how you read the agent's
+final text answer is framework-specific. Copy the closest cookbook and change just that line.
 
-**The claim must come from the agent, not your code.** Run a real agent with
-`output_type=SourceryKitAgentResponse` (or your framework's equivalent) and pass its
-`final_output.claimed_values` straight into the handoff. Do NOT hand-roll raw chat-completion
-calls or assemble claims yourself from the fetched data — that skips the agent the whole
-system exists to verify. Using any OpenAI-compatible endpoint (e.g. OpenRouter)? Point the
-SDK's client at your `MODEL_URL` with `MODEL_API_KEY`, like
-[cookbooks/openai_agents](cookbooks/openai_agents) does — don't drop to bare HTTP.
+**Verify the agent's own answer.** Run a real agent and pass its final text answer, as the
+user would receive it, to `verify`. Do NOT write the answer or the claims yourself from the
+fetched data — that skips the agent the whole system exists to verify. Using an
+OpenAI-compatible endpoint (e.g. OpenRouter)? Point the framework's client at your
+`MODEL_URL` with `MODEL_API_KEY`, like [cookbooks/openai_agents](cookbooks/openai_agents)
+does — don't drop to bare HTTP.
 
-**Single-agent** — one agent fetches, claims, and verifies (weather):
+**Single-agent** — one agent fetches and answers (weather):
 
-| Cookbook | Framework | What you'll find |
+| Cookbook | Framework | The answer comes from |
 |---|---|---|
-| [openai_agents](cookbooks/openai_agents) | OpenAI Agents SDK | Structured output via `output_type=SourceryKitAgentResponse` |
-| [claude_agent](cookbooks/claude_agent) | Claude Agent SDK | Structured output via `output_format` json_schema |
-| [langchain_agent](cookbooks/langchain_agent) | LangChain `create_agent` | Structured output via `response_format=`, claims read from `result["structured_response"]` |
+| [openai_agents](cookbooks/openai_agents) | OpenAI Agents SDK | `result.final_output`; its README explains the report |
+| [claude_agent](cookbooks/claude_agent) | Claude Agent SDK | the `result` of the final `ResultMessage` |
+| [langchain_agent](cookbooks/langchain_agent) | LangChain `create_agent` | `result["messages"][-1].text` |
+| [claude_agent_multi_tool](cookbooks/claude_agent_multi_tool) | Claude Agent SDK | one tool called for two cities; each value proven from its own call |
 
-**Multi-agent / multi-tool** — producer agents build claims; a separate verifier evaluates them:
+**Multi-agent** — one `run()` around the whole pipeline; the final answer is verified:
 
 | Cookbook | Framework | Pattern |
 |---|---|---|
 | [openai_agents_multi_agent](cookbooks/openai_agents_multi_agent) | OpenAI Agents SDK | Orchestrator → specialists → verify (customer support) |
-| [crewai_multi_agent](cookbooks/crewai_multi_agent) | CrewAI | Specialist crew → build → evaluate → remediate (invoice audit) |
-| [langgraph_multi_agent](cookbooks/langgraph_multi_agent) | LangGraph | Fetcher → evaluator → healer on `CAUGHT` (flights) |
-| [claude_agent_multi_tool](cookbooks/claude_agent_multi_tool) | Claude Agent SDK | Same tool called twice; `sourcerykit_ref` maps each claim (weather) |
+| [langgraph_multi_agent](cookbooks/langgraph_multi_agent) | LangGraph | Fetcher → verifier → healer → verifier (flight status) |
+| [crewai_multi_agent](cookbooks/crewai_multi_agent) | CrewAI | Crew → verify → remediate → verify (invoice status) |
 
 ## The flow at a glance
 
-```bash
-bootstrap_system()              # init: schema, handshake, HTTP interceptor — call first, once
-insert_trusted_endpoint(url)    # allow-list each outbound endpoint
-async_intercept_context(...)    # wrap the tool's HTTP call — records it
-SourceryKitAgentResponse        # the agent's structured output (answer + claimed_values)
-build_handoff_payload(...)      # compile claims; intercept_agent_id must match the agent_id above
-evaluate_handoff(payload)       # -> {"outcome": "PASS" | "CAUGHT" | "ERROR", "per_claim": [...]}
+```python
+await bootstrap_system()                              # init: schema, handshake, HTTP interceptor — first, once
+
+async with async_intercept_context(agent_id=..., action_name=...):
+    ...                                               # inside each tool: its HTTP call is recorded
+
+async with run() as r:                                # collects every call recorded inside, also in tasks it starts
+    answer = ...                                      # run the agent; take its final text answer
+
+report = await r.verify(answer, model=LINKER_MODEL)   # the answer's statements, checked and proven
+print(report)                                         # outcome, each statement's verdict and proven values
+problems = await check(report)                        # [] when every proof, claim and verdict holds
 ```
+
+`verify` sends the answer and the recorded responses to the linker model
+(`SOURCERYKIT_LINKER_URL`, `SOURCERYKIT_LINKER_API_KEY`), which writes how to check each
+statement; the verdict comes from the recorded data, sealed in your database, with a proof for
+every query. `check(report)` needs no Provably account: hand the report to anyone.
 
 Outcomes:
 
-- `PASS` — every claim matched the recorded data.
-- `CAUGHT` — a claim did not match the recorded data, or its endpoint was not trusted.
-- `ERROR` — nothing was verified (for example, zero claims could be resolved). Verifying
-  zero claims is always `ERROR`, never a pass.
+- `PASS` — every statement is checked and backed by the recorded data.
+- `PASS_WITH_NOTES` — nothing is contradicted, but some statements have no data to check them;
+  the report lists them as not verifiable.
+- `CAUGHT` — a statement is contradicted by the recorded data.
+- `ERROR` — no statement could be checked: nothing was verified. Verifying nothing is always
+  `ERROR`, never a pass.
 
 Async throughout — `await` every SDK call. Recorded traffic: `httpx`, `aiohttp`, and
-`requests`. Each claim maps to its recorded call by the `sourcerykit_ref` the tool returns
-(copied into the claimed value), so the same tool or `action_name` can be called repeatedly.
+`requests`. Every recorded call counts as evidence unless you list trusted endpoints; then
+calls to other endpoints are left out and listed in the report as untrusted.

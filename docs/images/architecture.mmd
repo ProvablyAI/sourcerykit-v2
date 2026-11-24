@@ -1,0 +1,14 @@
+flowchart TD
+    Agent["Agent and its tools"] -->|"outbound HTTP"| Interceptor["HTTP Interceptor"]
+    Interceptor -->|"records every call"| Intercepts[("Intercepts table")]
+    Run["run()"] -.->|"collects the call ids"| Intercepts
+    Intercepts -->|"the run's recorded responses"| Verify
+    Agent -->|"final answer"| Verify["verify(answer)"]
+    Verify -->|"answer + responses"| Linker["Linker model"]
+    Linker -->|"claims: how to check each statement"| Verify
+    Trusted[("Trusted endpoints (optional)")] -.->|"which calls are evidence"| Verify
+    Verify -->|"flattens and seals the responses"| Facts[("Facts table")]
+    Facts -->|"sealed and queried by"| Middleware["QEDB middleware"]
+    Middleware -->|"proven results"| Verify
+    Verify --> Report["Report: outcome, verdicts, proofs"]
+    Report -->|"check(report)"| Verifier["Provably public verifier"]

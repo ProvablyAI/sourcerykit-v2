@@ -4,6 +4,7 @@ Upgrade guides for SourceryKit releases. Each guide covers breaking changes, new
 
 | Version | Action | Guide |
 |---|---|---|
+| [v2.0](v2_0/v2_0.md) | `sourcerykit upgrade`, then `sourcerykit doctor --fix` | Breaking: plain-text answers verified with `run()` + `verify()`; handoff API removed; facts table (migration 006) |
 | [v1.3](v1_3/v1_3.md) | `sourcerykit init` | Breaking: API key → OAuth tokens; browser-only login |
 | [v1.1](v1_1/v1_1.md) | `sourcerykit upgrade` | Breaking: `reasoning` → `answer`; schema change (traces.answer) |
 | [v1.0.1](https://github.com/ProvablyAI/sourcerykit/blob/main/CHANGELOG.md#101) | `pip install --upgrade sourcerykit` | No schema change |

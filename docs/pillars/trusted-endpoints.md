@@ -1,32 +1,34 @@
 # Trusted Endpoints
-Trusted Endpoints define exactly which URLs an agent is allowed to contact. With this registry in place, any attempt to reach an unapproved destination is blocked before the request leaves the Python process.
+Trusted endpoints decide which recorded calls can back an answer. They are optional: with none listed, every call recorded in a run is evidence. Once your project lists some, calls to any other endpoint are still recorded, but left out of verification and listed in the report as untrusted.
 
-## Core Functions
-The registry acts as a database-backed, real-time allow-list for outbound network traffic:
+## When to List Them
+List the endpoints you trust when a tool calls a URL the model can influence, such as a generic "fetch this page" tool. Without a list, a page the model chose could back its own answer; with one, only the APIs you listed can.
 
-- **Strict Policy Enforcement**: The Interceptor queries this registry before dispatching any HTTP call. Unregistered endpoints are blocked immediately, raising an exception.
-- **Instant Propagation**: Additions, or revocations to the database registry take effect across the running process instantly without requiring an application restart.
-
+If every tool calls a fixed API, you need no list.
 
 ## Example
-All database operations in the SDK are asynchronous. Register a trusted destination during your application's setup or bootstrap phase:
+Register trusted endpoints during your application's setup, or once with the CLI:
 
 ```python
 from sourcerykit import insert_trusted_endpoint
 
-# Register an allowed endpoint in the database
-await insert_trusted_endpoint(url="https://api.example.com/v1/data")
+await insert_trusted_endpoint(url="https://api.open-meteo.com")
+```
 
+A run that also called another endpoint gets a report like:
+
+```text
+Outcome: PASS   (claims by linker:anthropic/claude-haiku-5.5)
+  SUPPORTED      '6.5 °C'  proven: t=6.5000  u=°C
+  UNTRUSTED      https://example.com/some-page: recorded, not used as evidence
 ```
 
 ## How the Registry Works
-- **URL Normalization**: URLs are standardized before storage and evaluation to prevent evasion via minor string variations.
-- **Enforcement Scope**: Enforcement is strictly active with no "warning-only" or dry-run mode.
-
+- **Per organization**: Endpoints are stored in the `trusted_endpoints` table of your database, for your Provably organization.
+- **Prefix match**: An endpoint is stored as its scheme, host and path (a trailing `/` removed); a call is trusted when its URL starts with a listed endpoint. `https://api.example.com` trusts every path on that host, `https://api.example.com/v1` only those under `/v1`. A URL given without a scheme is stored as `https://`.
+- **Read at verification**: The list is read when `verify` runs, so changes apply to the next verification without a restart.
 
 ## Configuration
-
-Trusted endpoints can be managed via the CLI or programmatically through the async API.
 
 ### CLI
 ```bash
@@ -36,38 +38,30 @@ sourcerykit endpoints remove <url>
 ```
 
 ### API
-The SDK exposes the following asynchronous functions to manage and query policies:
+All functions are asynchronous.
 
-#### Check if an endpoint is trusted
+#### Register a trusted endpoint
+```python
+await sourcerykit.insert_trusted_endpoint(*, url: str, display_label: str | None = None) -> None
+```
+Adds an endpoint to the registry. If it is already registered, nothing changes.
+
+#### Check whether a URL is trusted
 ```python
 await sourcerykit.trusted_endpoints.is_endpoint_trusted(url: str) -> bool
 ```
-Evaluates whether a given URL is active within the registry. This is called internally by the HTTP Interceptor before every outbound request.
 
-#### Register a new trusted endpoint
+#### List the trusted endpoints
 ```python
-await sourcerykit.trusted_endpoints.insert_trusted_endpoint(url: str, display_label: str | None = None) -> None
+await sourcerykit.trusted_endpoints.list_all_trusted_endpoints_detailed() -> list[dict[str, Any]]
 ```
-Inserts a new endpoint into the database. If the URL is already registered, this operation acts as a no-op.
-
-#### List all trusted endpoints
-```python
-await sourcerykit.trusted_endpoints.list_all_trusted_endpoints() -> list[str]
-```
-Returns a list of all active, registered endpoint URLs.
+Each entry has the endpoint's `url`, `label`, `policy_version` and `created_by`.
 
 #### Remove a trusted endpoint
 ```python
-await sourcerykit.trusted_endpoints.remove_trusted_endpoint(url: str) -> None
+await sourcerykit.trusted_endpoints.service.remove_trusted_endpoint(*, url: str) -> None
 ```
-Removes a previously registered endpoint from the registry. If the URL is not found, this operation acts as a no-op.
 
-#### Verify all endpoints in a handoff payload
-```python
-await sourcerykit.trusted_endpoints.verify_claim_endpoints(payload: HandoffPayload) -> None
-```
-Scans a handoff payload and verifies that every external URL referenced within it is present in the trusted registry. Raises an exception if an untrusted URL is detected.
+---
 
-
-
-For details on how the Interceptor blocks these calls, see [interceptor](https://sourcerykit.provably.ai/docs/pillars/interceptor). To see how database tables fit into the wider architecture, see [architecture](https://sourcerykit.provably.ai/docs/pillars/architecture).
+For how calls are recorded, see [interceptor](https://sourcerykit.provably.ai/docs/pillars/interceptor). For how the report lists untrusted calls, see [verification](https://sourcerykit.provably.ai/docs/pillars/verification).

@@ -1,30 +1,35 @@
 # Architecture
-The SourceryKit SDK makes Python agents' answers verifiable by recording outbound actions, enforcing endpoint policies, and checking claims against the recorded data. Its modular architecture isolates responsibilities to ensure easy integration and security.
+The SourceryKit SDK makes Python agents' answers verifiable: it records the HTTP calls an agent's tools make, then checks every statement of the agent's answer against what those calls returned, proving every value a verdict relies on. Each piece has one job, so it drops into an existing agent with a few lines.
 
 ## Core Flow
-SourceryKit intercepts an agent’s outbound HTTP calls, enforces endpoint policies, records interactions, and enables deterministic evaluation of claims.
+The interceptor records each call a tool makes; `run()` collects the calls of one agent run; `verify(answer)` asks the linker model how to check each statement, seals the run's responses in the facts table, and proves every query on them through the QEDB middleware. The report it returns can be checked by anyone with `check(report)`.
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/ProvablyAI/sourcerykit/refs/heads/main/docs/images/architecture.svg" alt="architecture" width="550" />
+  <img src="https://raw.githubusercontent.com/ProvablyAI/sourcerykit/refs/heads/main/docs/images/architecture.svg" alt="architecture" width="600" />
 </div>
 
 ## Component Overview
 
-- **Agent**: The host Python application. It executes HTTP requests, submits claims for evaluation, and receives verifiable results with minimal changes to core logic.
+- **Agent**: The host Python application and its tools. It makes HTTP requests as usual, runs inside `run()`, and passes its final text answer to `verify`.
 
-- **Bootstrap System**: Handles one-time initialization, including database schema setup and resource registration, before the agent starts executing. See [README](https://github.com/ProvablyAI/sourcerykit).
+- **Bootstrap System**: One-time initialization at startup: the database schema, the handshake with Provably that registers your tables with the QEDB middleware, and the HTTP interceptor. See [README](https://github.com/ProvablyAI/sourcerykit).
 
-- **HTTP Interceptor**: Intercepts outbound HTTP calls to enforce policies and record payloads. Untrusted requests are blocked before leaving the process. See [interceptor](https://sourcerykit.provably.ai/docs/pillars/interceptor).
+- **HTTP Interceptor**: Records the outbound HTTP calls made inside `async_intercept_context`, with the exact response text. See [interceptor](https://sourcerykit.provably.ai/docs/pillars/interceptor).
 
-- **Database Tables**:
-  - **Trusted Endpoints**: A registry of allowed endpoints used by the Interceptor to validate outbound requests. See [trusted-endpoints](https://sourcerykit.provably.ai/docs/pillars/trusted-endpoints).
-  - **Intercepts**: An append-only table storing detailed records of every outbound HTTP request and response. The Provably backend uses these records to generate cryptographic proofs. See [interceptor](https://sourcerykit.provably.ai/docs/pillars/interceptor).
+- **Run**: `async with run()` collects the ids of the calls recorded inside it, including those of the tasks it starts, so an answer is checked against its own run's calls.
 
-- **Handoff Payload**: A structured data format used to pass claims about external calls between agents or services. See [handoff](https://sourcerykit.provably.ai/docs/pillars/handoff).
+- **Linker**: A model you choose reads the answer and the recorded responses, and writes how to check each statement. It never decides a verdict, and code guards reject a check that could pass a value the statement does not state. See [verification](https://sourcerykit.provably.ai/docs/pillars/verification).
 
-- **Evaluator**: Compares agent claims against authoritative records from the Provably backend, returning a deterministic verdict (`PASS`, `CAUGHT`, or `ERROR`). See [handoff](https://sourcerykit.provably.ai/docs/pillars/handoff).
+- **Database Tables** (in your PostgreSQL database):
+  - **Intercepts**: Every recorded request and response, with the response's SHA-256 hash.
+  - **Facts**: The responses of the run being verified, flattened into rows of a fixed schema, so that a check on any response is a query on the same columns. The middleware seals the table before any query runs.
+  - **Trusted Endpoints**: An optional list of the endpoints whose calls count as evidence. See [trusted-endpoints](https://sourcerykit.provably.ai/docs/pillars/trusted-endpoints).
 
-- **Provably Backend**: The external service acting as the single source of truth for verifying agent claims by generating proofs from the Intercepts table.
+- **QEDB Middleware**: Provably's prover. It seals the facts table and proves the result of every query a check runs on it; the proofs are about 1 KB each.
+
+- **Report**: The outcome (`PASS`, `PASS_WITH_NOTES`, `CAUGHT` or `ERROR`), each statement's verdict with its proven values and proofs, and what could not be checked.
+
+- **Public Verifier**: Provably's endpoint that checks a proof and returns the query and result it proves. `check(report)` uses it, with no Provably account, and recomputes every verdict.
 
 ---
 
@@ -32,6 +37,6 @@ SourceryKit intercepts an agent’s outbound HTTP calls, enforces endpoint polic
 
 - [Onboarding](https://sourcerykit.provably.ai/docs/getting_started/onboarding) — one-time account, credentials, and database setup
 - [End-to-End Walkthrough](https://sourcerykit.provably.ai/docs/getting_started/end-to-end-walkthrough) — run the whole flow in code
-- [Interceptor](https://sourcerykit.provably.ai/docs/pillars/interceptor) — how outbound HTTP calls are captured and recorded
-- [Handoff](https://sourcerykit.provably.ai/docs/pillars/handoff) — building claims and reading the verdict
-- [Trusted Endpoints](https://sourcerykit.provably.ai/docs/pillars/trusted-endpoints) — the outbound allow-list
+- [Interceptor](https://sourcerykit.provably.ai/docs/pillars/interceptor) — how outbound HTTP calls are recorded
+- [Verification](https://sourcerykit.provably.ai/docs/pillars/verification) — the linker, proofs, the report and `check`
+- [Trusted Endpoints](https://sourcerykit.provably.ai/docs/pillars/trusted-endpoints) — which calls count as evidence

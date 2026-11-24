@@ -30,7 +30,7 @@ const config: RootConfig = {
 				{ id: "architecture", icon: "Building2" },
 				{ id: "interceptor", icon: "Shield" },
 				{ id: "trusted-endpoints", icon: "ListChecks" },
-				{ id: "handoff", icon: "ArrowRightLeft" },
+				{ id: "verification", icon: "BadgeCheck" },
 			],
 		},
 		{
@@ -54,6 +54,7 @@ const config: RootConfig = {
 			icon: "ArrowUpFromLine",
 			pages: [
 				{ id: "index", icon: "BookMarked" },
+				{ id: "v2_0", icon: "GitBranch" },
 				{ id: "v1_3", icon: "GitBranch" },
 				{ id: "v1_0", icon: "GitBranch" },
 			],

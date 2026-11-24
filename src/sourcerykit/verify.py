@@ -103,9 +103,10 @@ class Run:
     ) -> Report:
         """Check ``answer`` against the calls recorded in this run.
 
-        ``model`` turns the answer into claims, through the OpenAI-compatible chat API at
-        ``base_url`` with ``api_key``: by default ``SOURCERYKIT_LINKER_URL`` and
-        ``SOURCERYKIT_LINKER_API_KEY``.
+        ``model`` turns the answer into claims, at ``base_url`` with ``api_key``: by default
+        ``SOURCERYKIT_LINKER_URL`` and ``SOURCERYKIT_LINKER_API_KEY``. That is Claude's Messages
+        API when ``base_url`` is ``https://api.anthropic.com`` (install ``sourcerykit[anthropic]``),
+        otherwise an OpenAI-compatible chat API.
         """
         settings = get_settings()
         answer = unicodedata.normalize("NFC", answer).replace("\r\n", "\n")

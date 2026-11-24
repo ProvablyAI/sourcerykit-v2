@@ -49,10 +49,11 @@ class Settings:
     """SOURCERYKIT_PROJECT_NAME — Project name; its Provably collection is ``<project_name>-facts``."""
 
     linker_url: str = ""
-    """SOURCERYKIT_LINKER_URL — Base URL of the OpenAI-compatible chat API of the linker model."""
+    """SOURCERYKIT_LINKER_URL — Where the linker model runs: ``https://api.anthropic.com`` for
+    Claude's Messages API, otherwise the base URL of an OpenAI-compatible chat API."""
 
     linker_api_key: str = ""
-    """SOURCERYKIT_LINKER_API_KEY — API key for the linker's chat API."""
+    """SOURCERYKIT_LINKER_API_KEY — API key for the linker's API; for Claude, ``ANTHROPIC_API_KEY`` when unset."""
 
     provably_app: str = DEFAULT_PROVABLY_APP_URL
     """SOURCERYKIT_PROVABLY_APP_URL — URL of the Provably APP."""
