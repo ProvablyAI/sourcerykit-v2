@@ -32,7 +32,7 @@ _OPEN_METEO_BASE_URL = "https://api.open-meteo.com/v1/forecast"
 _MODEL_URL = os.getenv("MODEL_URL", "http://127.0.0.1:1234/v1")
 _MODEL_API_KEY = os.getenv("MODEL_API_KEY", "")
 _MODEL = os.getenv("MODEL_NAME", "Qwen3.5-0.8B-MLX-4bit")
-# The model that turns the answer into claims; any model behind the same endpoint.
+# The model that turns the answer into claims, at SOURCERYKIT_LINKER_URL.
 _LINKER_MODEL = os.getenv("LINKER_MODEL", _MODEL)
 
 
@@ -78,12 +78,8 @@ async def main(hallucinate: bool = False) -> None:
     print(f"\nAgent answer: {result.final_output}")
 
     # 4. Verify the answer: the linker model turns it into claims, proven on the recorded data
-    async def complete(messages: list[dict[str, str]]) -> str:
-        reply = await client.chat.completions.create(model=_LINKER_MODEL, messages=messages, temperature=0)
-        return reply.choices[0].message.content or ""
-
     print("Verifying the answer...")
-    report = await weather_run.verify(result.final_output, complete=complete, model=_LINKER_MODEL)
+    report = await weather_run.verify(result.final_output, model=_LINKER_MODEL)
     print(f"\n{report}")
 
     # 5. Check the report as whoever receives it would: its proofs, claims and verdicts
