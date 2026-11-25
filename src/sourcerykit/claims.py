@@ -35,7 +35,7 @@ Query = Callable[[str], Awaitable[list[Any]]]
 
 _TEXT_COLUMNS = {"path", "pattern", "obj", "type", "text"}
 _NUMBER_COLUMNS = {"idx", "num"}
-_AGGREGATES = {"count": "COUNT(*)", "min": "MIN(num)", "max": "MAX(num)", "sum": "SUM(num)", "avg": "AVG(num)"}
+AGGREGATES = {"count": "COUNT(*)", "min": "MIN(num)", "max": "MAX(num)", "sum": "SUM(num)", "avg": "AVG(num)"}
 _FILTER_OPS = {"=", "!=", "<", "<=", ">", ">=", "between", "in"}
 _COMPARE = {
     "=": operator.eq,
@@ -201,10 +201,10 @@ def sql(step: Step, answers: dict[str, list[Any]], table: str = "facts") -> str 
             conditions.append(f"{column} BETWEEN {_literal(column, low)} AND {_literal(column, high)}")
         else:
             conditions.append(f"{column} {'<>' if op == '!=' else op} {_literal(column, operand)}")
-    if step.select in _AGGREGATES:
+    if step.select in AGGREGATES:
         # An array's own row holds its length in num: never what a minimum or count is about.
         conditions.append("type <> 'array'")
-    select = _AGGREGATES.get(step.select, step.select)
+    select = AGGREGATES.get(step.select, step.select)
     return f"SELECT {select} FROM {table} WHERE {' AND '.join(conditions)}"
 
 
@@ -253,7 +253,7 @@ def _no_rows(step: Step) -> list[Any]:
     """The SQL answer on no row: no values, a count of 0, or a NULL aggregate."""
     if step.select == "count":
         return [0]
-    return [None] if step.select in _AGGREGATES else []
+    return [None] if step.select in AGGREGATES else []
 
 
 def _typed(step: Step, value: Any) -> Any:

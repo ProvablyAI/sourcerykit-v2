@@ -18,7 +18,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from sourcerykit.claims import _AGGREGATES, Claim, Step, folded
+from sourcerykit.claims import AGGREGATES, Claim, Step, folded
 from sourcerykit.facts import Fact
 
 INSTRUCTIONS = """\
@@ -197,11 +197,11 @@ def parse(
     text once folded (``claims.folded``): the answer's "no physical damage" filters on the data's
     "No physical damage", rather than select nothing.
     """
-    rows = None if facts is None else list(facts)
-    paths = None if rows is None else {p for f in rows for p in (f.path, f.pattern)}
-    arrays = set() if rows is None else {p for f in rows if f.type == "array" for p in (f.path, f.pattern)}
-    arrays -= {p for f in rows or [] if f.type != "array" for p in (f.path, f.pattern)}
-    texts = [*texts, *(f.text for f in rows or [] if f.text is not None)]
+    rows = list(facts or [])
+    paths = None if facts is None else {p for f in rows for p in (f.path, f.pattern)}
+    arrays = {p for f in rows if f.type == "array" for p in (f.path, f.pattern)}
+    arrays -= {p for f in rows if f.type != "array" for p in (f.path, f.pattern)}
+    texts = [*texts, *(f.text for f in rows if f.text is not None)]
     items = _claims(reply)
     if items is None:
         return [], [f"reply is not {{'claims': [...]}}: {reply[:200]!r}"]
@@ -223,7 +223,7 @@ def parse(
             on_arrays = {
                 p
                 for step in claim.steps.values()
-                if "text" in step.where or step.select in _AGGREGATES
+                if "text" in step.where or step.select in AGGREGATES
                 for p in _filtered_paths([step]) & arrays
             }
             if on_arrays:
