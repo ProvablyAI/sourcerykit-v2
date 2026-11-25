@@ -48,8 +48,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# psycopg2-binary ships its own libpq, but installing libpq5 keeps
-# runtime tooling (psql, diagnostics) usable in derived images.
+# psycopg[binary] ships its own libpq; libpq5 keeps runtime tooling
+# (psql, diagnostics) usable in derived images.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libpq5 \
     && rm -rf /var/lib/apt/lists/*

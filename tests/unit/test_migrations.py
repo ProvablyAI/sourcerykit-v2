@@ -72,11 +72,14 @@ def test_upgrade_keeps_the_trusted_endpoints_of_tables_made_without_migrations(d
 
 
 def test_upgrade_replaces_the_trusted_endpoints_table_of_the_sdk_before_1_0(database: str) -> None:
-    _query_commit = "CREATE TABLE trusted_endpoints (id SERIAL PRIMARY KEY, org_id TEXT NOT NULL, normalized_url TEXT)"
+    old_table = "CREATE TABLE trusted_endpoints (id SERIAL PRIMARY KEY, org_id TEXT NOT NULL, normalized_url TEXT)"
     with psycopg.connect(database, autocommit=True) as conn:
-        conn.execute(_query_commit)
+        conn.execute(old_table)  # the table of the SDK before 1.0, with an integer id
         conn.execute("INSERT INTO trusted_endpoints (org_id, normalized_url) VALUES ('org', 'https://old.x')")
     _migrate()
-    assert _query(database, "SELECT data_type FROM information_schema.columns WHERE table_name = 'trusted_endpoints' "
-                  "AND column_name = 'id'") == [("uuid",)]
+    assert _query(
+        database,
+        "SELECT data_type FROM information_schema.columns WHERE table_name = 'trusted_endpoints' "
+        "AND column_name = 'id'",
+    ) == [("uuid",)]
     assert _query(database, "SELECT count(*) FROM trusted_endpoints") == [(0,)]

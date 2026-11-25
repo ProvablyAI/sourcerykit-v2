@@ -46,7 +46,6 @@ class TestSettings:
         )
         assert s.provably_app == "https://api.provably.ai"
         assert s.provably_api == "https://api.provably.ai"
-        assert s.provably_mcp == "https://mcp.provably.ai"
 
     def test_raises_config_error_when_access_token_missing(self) -> None:
         with pytest.raises(SourceryKitConfigError, match="PROVABLY_ACCESS_TOKEN"):
@@ -107,7 +106,6 @@ class TestGetSettings:
             "SOURCERYKIT_POSTGRES_URL",
             "SOURCERYKIT_PROVABLY_APP_URL",
             "SOURCERYKIT_PROVABLY_API_URL",
-            "SOURCERYKIT_PROVABLY_MCP_URL",
         ):
             monkeypatch.delenv(key, raising=False)
         with (

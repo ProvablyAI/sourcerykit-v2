@@ -4,9 +4,7 @@ from uuid import UUID
 
 from sourcerykit.db._engine import get_engine
 from sourcerykit.db._intercepts import insert_intercept
-from sourcerykit.intercept._self_egress import is_self_egress
 from sourcerykit.logger import get_logger
-from sourcerykit.utils.validation import validate_length
 
 _log = get_logger(__name__)
 
@@ -24,12 +22,10 @@ async def add_intercept_row(
     agent_id: str,
     action_name: str,
 ) -> UUID | None:
-    # Validate identifiers that map to VARCHAR DB columns
-    validate_length("agent_id", agent_id, max_len=255)
-    validate_length("action_name", action_name, max_len=255)
-    if is_self_egress():
-        return None
+    """Store one recorded call, and return its row id.
 
+    The hooks skip the SDK's own calls, and ``async_intercept_context`` checks the identifiers.
+    """
     engine = get_engine()
 
     stmt = insert_intercept(

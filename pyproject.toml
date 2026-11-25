@@ -123,18 +123,6 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 plugins = ["pydantic.mypy"]
 
-[[tool.mypy.overrides]]
-module = ["psycopg2", "psycopg2.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["aiohttp", "aiohttp.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["openai_agents", "openai_agents.*", "agents", "agents.*"]
-ignore_missing_imports = true
-
 [tool.pydantic-mypy]
 warn_required_dynamic_aliases = true
 

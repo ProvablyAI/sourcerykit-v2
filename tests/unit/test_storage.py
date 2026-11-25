@@ -4,8 +4,6 @@ import hashlib
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from sourcerykit.intercept._storage import add_intercept_row, hash_payload
 
 # ---------------------------------------------------------------------------
@@ -44,25 +42,10 @@ def _make_engine_begin_mock(returned_id: uuid.UUID | None = None) -> MagicMock:
 
 
 class TestAddInterceptRow:
-    async def test_returns_none_during_self_egress(self) -> None:
-        with patch("sourcerykit.intercept._storage.is_self_egress", return_value=True):
-            result = await add_intercept_row(
-                url="https://example.com",
-                method="GET",
-                request_payload={},
-                raw="{}",
-                agent_id="agent-1",
-                action_name="action-a",
-            )
-        assert result is None
-
     async def test_returns_row_id_on_success(self) -> None:
         expected_id = uuid.uuid4()
         engine = _make_engine_begin_mock(returned_id=expected_id)
-        with (
-            patch("sourcerykit.intercept._storage.is_self_egress", return_value=False),
-            patch("sourcerykit.intercept._storage.get_engine", return_value=engine),
-        ):
+        with patch("sourcerykit.intercept._storage.get_engine", return_value=engine):
             result = await add_intercept_row(
                 url="https://trusted.com",
                 method="POST",
@@ -72,25 +55,3 @@ class TestAddInterceptRow:
                 action_name="action-a",
             )
         assert result == expected_id
-
-    async def test_raises_value_error_for_long_agent_id(self) -> None:
-        with pytest.raises(ValueError, match="agent_id"):
-            await add_intercept_row(
-                url="https://x.com",
-                method="GET",
-                request_payload={},
-                raw="{}",
-                agent_id="a" * 256,
-                action_name="action",
-            )
-
-    async def test_raises_value_error_for_long_action_name(self) -> None:
-        with pytest.raises(ValueError, match="action_name"):
-            await add_intercept_row(
-                url="https://x.com",
-                method="GET",
-                request_payload={},
-                raw="{}",
-                agent_id="agent",
-                action_name="x" * 256,
-            )

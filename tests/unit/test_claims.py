@@ -5,6 +5,7 @@ import decimal
 import json
 import sqlite3
 import uuid
+from contextlib import closing
 from typing import Any
 
 import pytest
@@ -46,30 +47,20 @@ RESPONSES = {
 
 def sqlite_facts(responses: dict[uuid.UUID, Any]) -> Query:
     """A query function on an in-memory SQLite facts table holding ``responses``."""
-    db = sqlite3.connect(":memory:")
-    db.execute("CREATE TABLE facts (call_ref, path, pattern, idx INTEGER, obj, type, num REAL, text)")
+    rows = []
     for call_ref, response in responses.items():
-        rows = flatten(call_ref, response if isinstance(response, str) else json.dumps(response))
-        assert rows is not None
-        db.executemany(
-            "INSERT INTO facts VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                (
-                    str(r.call_ref),
-                    r.path,
-                    r.pattern,
-                    r.idx,
-                    r.obj,
-                    r.type,
-                    None if r.num is None else float(r.num),
-                    r.text,
-                )
-                for r in rows
-            ],
-        )
+        facts = flatten(call_ref, response if isinstance(response, str) else json.dumps(response))
+        assert facts is not None
+        rows += [
+            (str(f.call_ref), f.path, f.pattern, f.idx, f.obj, f.type, None if f.num is None else float(f.num), f.text)
+            for f in facts
+        ]
 
     async def query(statement: str) -> list[Any]:
-        return [row[0] for row in db.execute(statement)]
+        with closing(sqlite3.connect(":memory:")) as db:  # a database per query: nothing left open
+            db.execute("CREATE TABLE facts (call_ref, path, pattern, idx INTEGER, obj, type, num REAL, text)")
+            db.executemany("INSERT INTO facts VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
+            return [row[0] for row in db.execute(statement)]
 
     return query
 

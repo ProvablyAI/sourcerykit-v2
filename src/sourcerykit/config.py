@@ -19,7 +19,6 @@ UUID_NIL = getattr(uuid, "NIL", uuid.UUID(int=0))
 
 DEFAULT_PROVABLY_API_URL = "https://api.provably.ai"
 DEFAULT_PROVABLY_APP_URL = "https://api.provably.ai"
-DEFAULT_PROVABLY_MCP_URL = "https://mcp.provably.ai"
 
 
 APP_NAME = "sourcerykit"
@@ -60,9 +59,6 @@ class Settings:
 
     provably_api: str = DEFAULT_PROVABLY_API_URL
     """SOURCERYKIT_PROVABLY_API_URL — URL of the Provably API."""
-
-    provably_mcp: str = DEFAULT_PROVABLY_MCP_URL
-    """SOURCERYKIT_PROVABLY_MCP_URL — URL of the Provably MCP server."""
 
     # Bootstrap resource IDs (resolved during init, cached in local .env)
     middleware_id: uuid.UUID | None = None
@@ -203,7 +199,6 @@ def get_settings() -> Settings:
         linker_api_key=_local_resolve("SOURCERYKIT_LINKER_API_KEY", "SOURCERYKIT_LINKER_API_KEY"),
         provably_app=_url("SOURCERYKIT_PROVABLY_APP_URL", "provably_app") or DEFAULT_PROVABLY_APP_URL,
         provably_api=_url("SOURCERYKIT_PROVABLY_API_URL", "provably_api") or DEFAULT_PROVABLY_API_URL,
-        provably_mcp=_url("SOURCERYKIT_PROVABLY_MCP_URL", "provably_mcp") or DEFAULT_PROVABLY_MCP_URL,
         middleware_id=_opt_uuid("SOURCERYKIT_MIDDLEWARE_ID", "SOURCERYKIT_MIDDLEWARE_ID"),
         database_id=_opt_uuid("SOURCERYKIT_DATABASE_ID", "SOURCERYKIT_DATABASE_ID"),
         schema_id=_opt_uuid("SOURCERYKIT_SCHEMA_ID", "SOURCERYKIT_SCHEMA_ID"),

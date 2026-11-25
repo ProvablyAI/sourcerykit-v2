@@ -30,7 +30,6 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-FLATTENER_VERSION = 1
 MAX_ROWS = 10_000
 
 _MAX_DECIMALS = 15
@@ -40,7 +39,7 @@ _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 @dataclass(frozen=True)
 class Fact:
-    """One row of the facts table."""
+    """One row of the facts table: its fields are the table's columns."""
 
     call_ref: UUID
     path: str
@@ -50,7 +49,6 @@ class Fact:
     type: str
     num: Decimal | None
     text: str | None
-    flattener_version: int = FLATTENER_VERSION
 
 
 class _TooManyRows(Exception):

@@ -23,6 +23,7 @@ from sourcerykit.intercept.interceptor import (
     async_intercept_context,
 )
 from sourcerykit.intercept.requests_hook import _make_requests_wrapper
+from sourcerykit.verify import run
 
 
 class TestRecord:
@@ -32,28 +33,27 @@ class TestRecord:
             await _record("https://example.com", "POST", {}, "{}")
             mock_add.assert_not_called()
 
-    async def test_calls_add_intercept_row_when_context_active(self) -> None:
-        expected_id = uuid.uuid4()
-        with patch("sourcerykit.intercept.interceptor.add_intercept_row", AsyncMock(return_value=expected_id)):
+    async def test_stores_the_call_with_the_context_s_tags(self) -> None:
+        with patch("sourcerykit.intercept.interceptor.add_intercept_row", AsyncMock(return_value=uuid.uuid4())) as add:
             async with async_intercept_context(agent_id="agent-1", action_name="act-1"):
                 await _record("https://example.com", "GET", {"q": 1}, '{"data": "resp"}')
+        add.assert_awaited_once_with(
+            url="https://example.com",
+            method="GET",
+            request_payload={"q": 1},
+            raw='{"data": "resp"}',
+            agent_id="agent-1",
+            action_name="act-1",
+        )
 
-    async def test_does_not_raise_when_add_intercept_row_fails(self) -> None:
-        """Storage errors must be swallowed — never propagated to caller."""
+    async def test_a_failed_store_is_swallowed_and_not_part_of_the_run(self) -> None:
+        """Recording must never break the agent's own call."""
         with patch(
-            "sourcerykit.intercept.interceptor.add_intercept_row",
-            AsyncMock(side_effect=RuntimeError("db down")),
+            "sourcerykit.intercept.interceptor.add_intercept_row", AsyncMock(side_effect=RuntimeError("db down"))
         ):
-            async with async_intercept_context(agent_id="agent-1", action_name="act-1"):
+            async with async_intercept_context(agent_id="agent-1", action_name="act-1"), run() as current:
                 await _record("https://example.com", "GET", {}, "{}")
-            # If we get here, the error was swallowed correctly
-
-    async def test_discards_row_id_from_add_intercept_row(self) -> None:
-        """Row id is no longer cached — call_ref is the lookup key."""
-        with patch("sourcerykit.intercept.interceptor.add_intercept_row", AsyncMock(return_value=uuid.uuid4())):
-            async with async_intercept_context(agent_id="agent-1", action_name="act-1"):
-                await _record("https://example.com", "GET", {}, "{}")
-        # No globals to assert — this is intentional
+        assert current.calls == []
 
 
 async def test_httpx_hook_records_the_body_as_received() -> None:

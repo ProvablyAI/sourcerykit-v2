@@ -15,6 +15,7 @@ import base64
 import unicodedata
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -306,7 +307,7 @@ async def _check(claims: list[Claim], rows: list[Fact]) -> list[ClaimResult]:
         async with get_engine().begin() as conn:
             await conn.execute(text(f"TRUNCATE {facts.name}"))
             if rows:
-                await conn.execute(insert(facts), [_row(fact) for fact in rows])
+                await conn.execute(insert(facts), [asdict(fact) for fact in rows])
         await service.start_preprocess(middleware, table)
         await service.get_preprocess_completed(middleware, table)
 
@@ -361,16 +362,3 @@ def _cells(result: dict[str, Any]) -> list[Any]:
 def _encode(proof_file: bytes) -> str:
     """A downloaded proof, its bytes written as comma-separated numbers, as base64."""
     return base64.b64encode(bytes(int(byte) for byte in proof_file.split(b","))).decode()
-
-
-def _row(fact: Fact) -> dict[str, Any]:
-    return {
-        "call_ref": fact.call_ref,
-        "path": fact.path,
-        "pattern": fact.pattern,
-        "idx": fact.idx,
-        "obj": fact.obj,
-        "type": fact.type,
-        "num": fact.num,
-        "text": fact.text,
-    }
