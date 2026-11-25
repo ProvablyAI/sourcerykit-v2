@@ -6,6 +6,7 @@ from typing import Any
 
 from sourcerykit import linker
 from sourcerykit.claims import evaluate
+from sourcerykit.facts import flatten
 from tests.unit.test_claims import sqlite_facts
 
 REF = uuid.uuid4()
@@ -69,8 +70,40 @@ def test_parse_takes_the_last_claims_object() -> None:
 def test_parse_drops_claims_on_paths_not_in_the_data() -> None:
     step = {"call": "call_1", "select": "min", "where": {"pattern": "$.hourly.temp[*]"}}
     claim = {"text": "14°C", "steps": {"m": step}, "checks": [{"expr": "m", "op": ">=", "value": 14}]}
-    claims, errors = linker.parse("It is 14°C.", json.dumps({"claims": [claim]}), [REF], {"$.hourly.temperature_2m[*]"})
+    facts = flatten(REF, json.dumps({"hourly": {"temperature_2m": [14]}}))
+    claims, errors = linker.parse("It is 14°C.", json.dumps({"claims": [claim]}), [REF], facts)
     assert claims == [] and "not in the data: ['$.hourly.temp[*]']" in errors[0]
+
+
+async def test_parse_drops_text_filters_and_aggregates_on_an_array_row() -> None:
+    """Naming the array, not its elements ([*]), selects nothing: the true statement was CAUGHT."""
+    data = {"hourly": {"time": ["T11", "T12", "T13", "T14"], "temperature_2m": [13.6, 13.1, 12.9, 12.2]}}
+
+    def afternoon(times: str, temps: str) -> dict[str, Any]:
+        steps = {
+            "i": {
+                "call": "call_1",
+                "select": "idx",
+                "where": {"pattern": times, "text": {"in": ["T12", "T13", "T14"]}},
+            },
+            "lo": {"call": "call_1", "select": "min", "where": {"pattern": temps, "idx": {"in": {"step": "i"}}}},
+        }
+        return {"text": "stays above 12", "steps": steps, "checks": [{"expr": "lo", "op": ">=", "value": 12}]}
+
+    reply = json.dumps(
+        {
+            "claims": [
+                afternoon("$.hourly.time", "$.hourly.temperature_2m[*]"),
+                afternoon("$.hourly.time[*]", "$.hourly.temperature_2m"),
+                afternoon("$.hourly.time[*]", "$.hourly.temperature_2m[*]"),
+            ]
+        }
+    )
+    claims, errors = linker.parse("It stays above 12°C.", reply, [REF], flatten(REF, json.dumps(data)))
+    assert len(errors) == 2
+    assert "['$.hourly.time'] only name arrays" in errors[0]
+    assert "['$.hourly.temperature_2m'] only name arrays" in errors[1]
+    assert [(await evaluate(claim, sqlite_facts({REF: data})))[0] for claim in claims] == ["supported"]
 
 
 async def test_parse_spells_text_filters_as_the_data_does() -> None:

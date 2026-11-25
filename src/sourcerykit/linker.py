@@ -18,7 +18,8 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from sourcerykit.claims import Claim, folded
+from sourcerykit.claims import _AGGREGATES, Claim, Step, folded
+from sourcerykit.facts import Fact
 
 INSTRUCTIONS = """\
 You turn an AI agent's answer into claims that can be checked against the API responses the
@@ -29,7 +30,9 @@ checks run on the recorded data.
 
 Each response is flattened into rows of a table, one per JSON value and one per array:
 - path: exact location, like $.hotels[2].price (keys as .key, or ['key'] if not an identifier).
-- pattern: the path with every array index as [*], like $.hotels[*].price.
+- pattern: the path with every array index as [*], like $.hotels[*].price. A list of plain
+  values, like {"temps": [3, 5]}, has them at $.temps[*]; $.temps is the list's own row, which
+  holds only its length.
 - idx: the index in the innermost array.
 - obj: the path of the innermost array element, like $.hotels[2].
 - type: number, string, bool, null or array.
@@ -179,19 +182,26 @@ def messages(answer: str, calls: list[tuple[str, str]]) -> list[dict[str, str]]:
 
 
 def parse(
-    answer: str, reply: str, calls: list[UUID], paths: set[str] | None = None, texts: Iterable[str] = ()
+    answer: str, reply: str, calls: list[UUID], facts: Iterable[Fact] | None = None, texts: Iterable[str] = ()
 ) -> tuple[list[Claim], list[str]]:
     """The valid claims of the model's ``reply``, and why each other one was dropped.
 
     ``calls`` holds the UUIDs of the recorded calls, in the order given to ``messages``, and
-    ``paths`` every path and pattern of their facts. A claim is dropped if it is malformed, does
-    not quote the answer, reads a call that was not shown, or filters on a path or pattern that is
-    not in the data: a mistyped one would select nothing, and pass as a contradicted claim.
+    ``facts`` their rows. A claim is dropped if it is malformed, does not quote the answer, reads a
+    call that was not shown, or filters on a path or pattern that is not in the data. It is also
+    dropped if a step filters on text, or aggregates, on a path or pattern only arrays have: an
+    array's row holds just its length, so such a step selects nothing whatever the values (the
+    elements of ``$.a`` are ``$.a[*]``). Either mistake would pass as a contradicted claim.
 
-    A text filter is spelled as in ``texts`` when exactly one of them is the same text once folded
-    (``claims.folded``): the answer's "no physical damage" filters on the data's "No physical
-    damage", rather than select nothing.
+    A text filter is spelled as in ``texts``, or in the facts, when exactly one of them is the same
+    text once folded (``claims.folded``): the answer's "no physical damage" filters on the data's
+    "No physical damage", rather than select nothing.
     """
+    rows = None if facts is None else list(facts)
+    paths = None if rows is None else {p for f in rows for p in (f.path, f.pattern)}
+    arrays = set() if rows is None else {p for f in rows if f.type == "array" for p in (f.path, f.pattern)}
+    arrays -= {p for f in rows or [] if f.type != "array" for p in (f.path, f.pattern)}
+    texts = [*texts, *(f.text for f in rows or [] if f.text is not None)]
     items = _claims(reply)
     if items is None:
         return [], [f"reply is not {{'claims': [...]}}: {reply[:200]!r}"]
@@ -207,9 +217,17 @@ def parse(
                 refs = step["call"] if isinstance(step["call"], list) else [step["call"]]
                 step["call"] = [names[ref] for ref in refs]
             claim = Claim.model_validate(item)
-            unknown = set() if paths is None else _filtered_paths(claim) - paths
+            unknown = set() if paths is None else _filtered_paths(claim.steps.values()) - paths
             if unknown:
                 raise ValueError(f"not in the data: {sorted(unknown)}")
+            on_arrays = {
+                p
+                for step in claim.steps.values()
+                if "text" in step.where or step.select in _AGGREGATES
+                for p in _filtered_paths([step]) & arrays
+            }
+            if on_arrays:
+                raise ValueError(f"{sorted(on_arrays)} only name arrays: their elements are '<path>[*]'")
             if claim.unsupported is None:
                 _guard(claim)
             _respell(claim, spellings)
@@ -362,10 +380,10 @@ def _claims(reply: str) -> list[Any] | None:
     return found
 
 
-def _filtered_paths(claim: Claim) -> set[str]:
-    """The constant paths and patterns the claim's steps filter on."""
+def _filtered_paths(steps: Iterable[Step]) -> set[str]:
+    """The constant paths and patterns the steps filter on."""
     found: set[str] = set()
-    for step in claim.steps.values():
+    for step in steps:
         for column in ("path", "pattern"):
             value = step.where.get(column)
             if isinstance(value, dict) and len(value) == 1:

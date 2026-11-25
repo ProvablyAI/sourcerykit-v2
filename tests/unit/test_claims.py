@@ -324,3 +324,22 @@ def test_text_compares_ignoring_case_whitespace_and_underscores(recorded: str, s
         }
     )
     assert asyncio.run(evaluate(claim, sqlite_facts({WEATHER: {"status": recorded}})))[0] == verdict
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "verdict"),
+    [
+        ("upstream timeout", "upstream timeout", "supported"),  # a retried call: the same value twice
+        ("upstream timeout", "rate limited", "contradicted"),  # not one value: unresolved
+    ],
+)
+def test_equal_values_of_several_calls_are_one_value(first: str, second: str, verdict: str) -> None:
+    claim = Claim.model_validate(
+        {
+            "text": "due to upstream timeouts",
+            "steps": {"e": {"call": [WEATHER, YESTERDAY], "select": "text", "where": {"path": "$.error"}}},
+            "checks": [{"expr": "e", "op": "=", "value": "upstream timeout"}],
+        }
+    )
+    query = sqlite_facts({WEATHER: {"error": first}, YESTERDAY: {"error": second}})
+    assert asyncio.run(evaluate(claim, query))[0] == verdict

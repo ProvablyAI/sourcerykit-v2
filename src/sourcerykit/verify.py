@@ -139,9 +139,7 @@ class Run:
         rows = [fact for call_id, _, raw in recorded for fact in flatten(call_id, raw) or []]
         messages = linker.messages(answer, [(url, raw) for _, url, raw in recorded])
         reply = await _complete(messages, model, base_url or settings.linker_url, api_key or settings.linker_api_key)
-        paths = {p for fact in rows for p in (fact.path, fact.pattern)}
-        texts = {fact.text for fact in rows if fact.text is not None}
-        claims, dropped = linker.parse(answer, reply, [call_id for call_id, _, _ in recorded], paths, texts)
+        claims, dropped = linker.parse(answer, reply, [call_id for call_id, _, _ in recorded], rows)
         results = await _seal_and_prove(claims, rows) if claims else []
         return Report(
             org_id=settings.org_id,

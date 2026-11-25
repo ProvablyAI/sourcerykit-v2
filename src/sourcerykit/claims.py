@@ -265,7 +265,8 @@ def _typed(step: Step, value: Any) -> Any:
 
 
 def _single(answer: list[Any]) -> Any:
-    if len(answer) != 1:
+    """The one value of ``answer``. Equal values are one: two calls that both return "timeout"."""
+    if not answer or any(value != answer[0] for value in answer):
         raise _Unresolved(f"expected one value, got {len(answer)}")
     return answer[0]
 
