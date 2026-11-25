@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mirror CI lint + unit (coverage-gated) + e2e without Docker.
+# Mirror CI: lint + tests (coverage-gated) without Docker.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -14,8 +14,5 @@ uv run ruff check
 
 echo "==> unit (coverage gate 60%)"
 uv run pytest tests/unit -q --cov=sourcerykit --cov-report=term-missing --cov-fail-under=60
-
-echo "==> e2e"
-uv run pytest tests/e2e -q
 
 echo "==> all CI-local checks passed"

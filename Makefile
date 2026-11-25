@@ -63,16 +63,12 @@ typecheck: ## Run mypy in strict mode
 # --- tests ------------------------------------------------------------------
 
 .PHONY: test
-test: ## Run the full pytest suite with coverage gate (unit + e2e)
+test: ## Run the pytest suite with coverage gate
 	$(UV) run pytest -q $(PYTEST_ARGS)
 
-.PHONY: test-unit
-test-unit: ## Run only the fast hermetic unit suite
-	$(UV) run pytest -q -m "not e2e" $(PYTEST_ARGS)
-
-.PHONY: test-e2e
-test-e2e: ## Run only the loopback-server e2e suite
-	$(UV) run pytest -q -m e2e $(PYTEST_ARGS)
+.PHONY: test-db
+test-db: ## Run the suite with the PostgreSQL tests too (needs TEST_POSTGRES_URL)
+	SOURCERYKIT_TEST_POSTGRES_URL=$(TEST_POSTGRES_URL) $(UV) run pytest -q $(PYTEST_ARGS)
 
 # --- packaging --------------------------------------------------------------
 
