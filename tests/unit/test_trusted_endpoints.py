@@ -1,4 +1,4 @@
-"""Tests for sourcerykit.trusted_endpoints.service"""
+"""Tests for sourcerykit.trusted_endpoints"""
 
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from sourcerykit.errors import SourceryKitStorageError, SourceryKitTrustError
-from sourcerykit.trusted_endpoints.service import (
+from sourcerykit.trusted_endpoints import (
     endpoint_matches,
     insert_trusted_endpoint,
     is_endpoint_trusted,
@@ -119,15 +119,15 @@ def test_endpoint_matches(url: str, endpoint: str, trusted: bool) -> None:
 class TestIsEndpointTrusted:
     async def test_a_url_under_a_listed_endpoint_is_trusted(self) -> None:
         listed = AsyncMock(return_value=[{"url": "https://other.example.com"}, {"url": "https://api.example.com/v1"}])
-        with patch("sourcerykit.trusted_endpoints.service.list_all_trusted_endpoints_detailed", listed):
+        with patch("sourcerykit.trusted_endpoints.list_all_trusted_endpoints_detailed", listed):
             assert await is_endpoint_trusted("https://api.example.com/v1/path?foo=bar") is True
             assert await is_endpoint_trusted("https://api.example.com/v2/path") is False
 
     async def test_raises_storage_error_on_db_failure(self) -> None:
         mock_engine = _make_connect_mock(raise_exc=RuntimeError("db down"))
         with (
-            patch("sourcerykit.trusted_endpoints.service.get_engine", return_value=mock_engine),
-            patch("sourcerykit.trusted_endpoints.service.get_settings") as ms,
+            patch("sourcerykit.trusted_endpoints.get_engine", return_value=mock_engine),
+            patch("sourcerykit.trusted_endpoints.get_settings") as ms,
         ):
             ms.return_value.org_id = _ORG
             with pytest.raises(SourceryKitStorageError):
@@ -139,8 +139,8 @@ class TestRemoveTrustedEndpoint:
         """A path under a listed endpoint is trusted, but there is no such entry to remove."""
         listed = AsyncMock(return_value=[{"url": "https://api.example.com"}])
         with (
-            patch("sourcerykit.trusted_endpoints.service.list_all_trusted_endpoints_detailed", listed),
-            patch("sourcerykit.trusted_endpoints.service.get_settings") as ms,
+            patch("sourcerykit.trusted_endpoints.list_all_trusted_endpoints_detailed", listed),
+            patch("sourcerykit.trusted_endpoints.get_settings") as ms,
         ):
             ms.return_value.org_id = _ORG
             with pytest.raises(SourceryKitTrustError):
@@ -156,8 +156,8 @@ class TestInsertTrustedEndpoint:
     async def test_inserts_successfully(self) -> None:
         mock_engine = _make_begin_mock()
         with (
-            patch("sourcerykit.trusted_endpoints.service.get_engine", return_value=mock_engine),
-            patch("sourcerykit.trusted_endpoints.service.get_settings") as ms,
+            patch("sourcerykit.trusted_endpoints.get_engine", return_value=mock_engine),
+            patch("sourcerykit.trusted_endpoints.get_settings") as ms,
         ):
             ms.return_value.org_id = _ORG
             await insert_trusted_endpoint(url="https://new.example.com", display_label="My EP")
@@ -166,15 +166,15 @@ class TestInsertTrustedEndpoint:
     async def test_raises_storage_error_on_db_failure(self) -> None:
         mock_engine = _make_begin_mock(raise_exc=RuntimeError("fail"))
         with (
-            patch("sourcerykit.trusted_endpoints.service.get_engine", return_value=mock_engine),
-            patch("sourcerykit.trusted_endpoints.service.get_settings") as ms,
+            patch("sourcerykit.trusted_endpoints.get_engine", return_value=mock_engine),
+            patch("sourcerykit.trusted_endpoints.get_settings") as ms,
         ):
             ms.return_value.org_id = _ORG
             with pytest.raises(SourceryKitStorageError):
                 await insert_trusted_endpoint(url="https://example.com")
 
     async def test_rejects_display_label_over_255_chars(self) -> None:
-        with patch("sourcerykit.trusted_endpoints.service.get_settings") as ms:
+        with patch("sourcerykit.trusted_endpoints.get_settings") as ms:
             ms.return_value.org_id = _ORG
             with pytest.raises(ValueError, match="display_label"):
                 await insert_trusted_endpoint(url="https://example.com", display_label="x" * 256)

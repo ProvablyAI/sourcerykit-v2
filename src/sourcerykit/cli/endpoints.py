@@ -4,10 +4,10 @@ import questionary
 import typer
 from rich.table import Table
 
+from sourcerykit import trusted_endpoints
 from sourcerykit.cli.utils import console, require_settings
 from sourcerykit.errors import SourceryKitTrustError
-from sourcerykit.trusted_endpoints import service
-from sourcerykit.trusted_endpoints.service import sanitize_and_extract_trusted_url
+from sourcerykit.trusted_endpoints import sanitize_and_extract_trusted_url
 
 endpoints = typer.Typer(no_args_is_help=True)
 
@@ -20,14 +20,14 @@ def add(url: str, label: str | None = typer.Option(None, "--label", "-l", help="
     except SourceryKitTrustError as e:
         console.print(f"[red]❌ {e}[/red]")
         raise typer.Exit(code=1)
-    asyncio.run(service.insert_trusted_endpoint(url=url, display_label=label))
+    asyncio.run(trusted_endpoints.insert_trusted_endpoint(url=url, display_label=label))
     console.print(f"[bold green]✅ Endpoint added:[/bold green] {url}" + (f" ({label})" if label else ""))
 
 
 @endpoints.command()
 def list() -> None:
     require_settings()
-    rows = asyncio.run(service.list_all_trusted_endpoints_detailed())
+    rows = asyncio.run(trusted_endpoints.list_all_trusted_endpoints_detailed())
 
     if not rows:
         console.print("[yellow]No trusted endpoints found.[/yellow]")
@@ -56,5 +56,5 @@ def remove(
         if not confirm:
             console.print("[yellow]Cancelled.[/yellow]")
             return
-    asyncio.run(service.remove_trusted_endpoint(url=url))
+    asyncio.run(trusted_endpoints.remove_trusted_endpoint(url=url))
     console.print(f"[bold green]✅ Endpoint removed:[/bold green] {url}")

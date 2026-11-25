@@ -14,7 +14,7 @@ class TestEndpointsAdd:
         with (
             patch("sourcerykit.cli.endpoints.require_settings"),
             patch("sourcerykit.cli.endpoints.sanitize_and_extract_trusted_url", return_value="https://api.example.com"),
-            patch("sourcerykit.cli.endpoints.service") as mock_svc,
+            patch("sourcerykit.cli.endpoints.trusted_endpoints") as mock_svc,
             patch("sourcerykit.cli.endpoints.console"),
         ):
             mock_svc.insert_trusted_endpoint = AsyncMock()
@@ -26,7 +26,7 @@ class TestEndpointsAdd:
         with (
             patch("sourcerykit.cli.endpoints.require_settings"),
             patch("sourcerykit.cli.endpoints.sanitize_and_extract_trusted_url", return_value="https://api.example.com"),
-            patch("sourcerykit.cli.endpoints.service") as mock_svc,
+            patch("sourcerykit.cli.endpoints.trusted_endpoints") as mock_svc,
             patch("sourcerykit.cli.endpoints.console"),
         ):
             mock_svc.insert_trusted_endpoint = AsyncMock()
@@ -56,7 +56,7 @@ class TestEndpointsList:
         ]
         with (
             patch("sourcerykit.cli.endpoints.require_settings"),
-            patch("sourcerykit.cli.endpoints.service") as mock_svc,
+            patch("sourcerykit.cli.endpoints.trusted_endpoints") as mock_svc,
             patch("sourcerykit.cli.endpoints.console"),
         ):
             mock_svc.list_all_trusted_endpoints_detailed = AsyncMock(return_value=rows)
@@ -65,7 +65,7 @@ class TestEndpointsList:
     def test_list_empty(self) -> None:
         with (
             patch("sourcerykit.cli.endpoints.require_settings"),
-            patch("sourcerykit.cli.endpoints.service") as mock_svc,
+            patch("sourcerykit.cli.endpoints.trusted_endpoints") as mock_svc,
             patch("sourcerykit.cli.endpoints.console"),
         ):
             mock_svc.list_all_trusted_endpoints_detailed = AsyncMock(return_value=[])
@@ -77,7 +77,7 @@ class TestEndpointsRemove:
         with (
             patch("sourcerykit.cli.endpoints.require_settings"),
             patch("sourcerykit.cli.endpoints.questionary") as mock_q,
-            patch("sourcerykit.cli.endpoints.service") as mock_svc,
+            patch("sourcerykit.cli.endpoints.trusted_endpoints") as mock_svc,
             patch("sourcerykit.cli.endpoints.console"),
         ):
             mock_q.confirm.return_value.ask.return_value = True
@@ -90,7 +90,7 @@ class TestEndpointsRemove:
         with (
             patch("sourcerykit.cli.endpoints.require_settings"),
             patch("sourcerykit.cli.endpoints.questionary") as mock_q,
-            patch("sourcerykit.cli.endpoints.service") as mock_svc,
+            patch("sourcerykit.cli.endpoints.trusted_endpoints") as mock_svc,
             patch("sourcerykit.cli.endpoints.console"),
         ):
             mock_q.confirm.return_value.ask.return_value = False
