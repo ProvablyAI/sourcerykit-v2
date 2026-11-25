@@ -120,6 +120,7 @@ def api() -> Iterator[str]:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_address[1]}"
     server.shutdown()
+    server.server_close()
 
 
 async def test_aiohttp_hook_records_a_chunked_body_and_leaves_it_to_the_caller(api: str) -> None:
@@ -154,6 +155,7 @@ async def test_requests_hook_records_a_streamed_body_once_read_in_the_context_of
         await asyncio.sleep(0.1)  # the record is scheduled on the running loop
         assert list(response.iter_content(4)) and response.json() == received  # read again: not recorded twice
 
+        response.close()
         plain = requests.get(f"{api}/events", timeout=10).text  # not streamed: read in full by requests
         await asyncio.sleep(0.1)
     assert received == json.loads(_BODY)

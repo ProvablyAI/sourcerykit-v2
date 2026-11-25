@@ -172,6 +172,23 @@ async def test_claims_check_proven_answers_as_the_prover_returns_them() -> None:
     assert result.steps["t"].answer == [Decimal("6.2")] and result.steps["n"].answer == [3]
 
 
+async def test_a_query_two_claims_share_is_proven_once() -> None:
+    proven: list[str] = []
+
+    async def prove(statement: str) -> list[Any]:
+        proven.append(statement)
+        await asyncio.sleep(0)  # both claims ask before the first proof is back
+        return [statement]
+
+    query = verify_module._once(prove)
+    assert list(await asyncio.gather(query("SELECT 1"), query("SELECT 1"), query("SELECT 2"))) == [
+        ["SELECT 1"],
+        ["SELECT 1"],
+        ["SELECT 2"],
+    ]
+    assert proven == ["SELECT 1", "SELECT 2"]
+
+
 def test_a_downloaded_proof_is_kept_as_base64_of_its_bytes() -> None:
     assert base64.b64decode(verify_module._encode(b"1,2,255")) == bytes([1, 2, 255])
 

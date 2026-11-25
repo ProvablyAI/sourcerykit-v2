@@ -319,7 +319,20 @@ async def _check(claims: list[Claim], rows: list[Fact]) -> list[ClaimResult]:
             proofs[statement] = (query_id, _encode(proof_file))
             return _cells(record["result"])
 
-        return await _results(claims, prove, proofs)
+        return await _results(claims, _once(prove), proofs)
+
+
+def _once(prove: Query) -> Query:
+    """``prove``, run once per statement: claims often share a query ("the cheapest BA flight" and
+    "BA's flights" select the same objects), and running in parallel, may ask for it together."""
+    started: dict[str, asyncio.Future[list[Any]]] = {}
+
+    async def query(statement: str) -> list[Any]:
+        if statement not in started:
+            started[statement] = asyncio.ensure_future(prove(statement))
+        return await started[statement]
+
+    return query
 
 
 async def _results(claims: list[Claim], query: Query, proofs: dict[str, tuple[UUID, str]]) -> list[ClaimResult]:
