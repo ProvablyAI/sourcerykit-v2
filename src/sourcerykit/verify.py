@@ -36,7 +36,10 @@ from sourcerykit.errors import SourceryKitBootstrapError, SourceryKitConfigError
 from sourcerykit.facts import Fact, flatten
 from sourcerykit.intercept._self_egress import provably_self_egress
 from sourcerykit.intercept.interceptor import _ctx_run_calls
+from sourcerykit.logger import get_logger
 from sourcerykit.trusted_endpoints import endpoint_matches, list_all_trusted_endpoints_detailed
+
+_log = get_logger(__name__)
 
 _ANTHROPIC_HOST = "api.anthropic.com"
 
@@ -125,6 +128,12 @@ class Run:
         otherwise an OpenAI-compatible chat API.
         """
         settings = get_settings()
+        if not self.calls:
+            _log.warning(
+                "verify_no_recorded_calls",
+                hint="nothing to check the answer against: make each tool's HTTP call inside "
+                "async_intercept_context, run the agent inside `async with run()`, and call bootstrap_system() first",
+            )
         answer = unicodedata.normalize("NFC", answer).replace("\r\n", "\n")
         recorded, untrusted = await _by_trust(await _load_calls(self.calls))
         rows = [fact for call_id, _, raw in recorded for fact in flatten(call_id, raw) or []]
@@ -169,21 +178,27 @@ async def check(report: Report, *, api_url: str = DEFAULT_PROVABLY_API_URL) -> l
     problems: list[str] = []
     proven: dict[str, list[Any]] = {}
     url = f"{api_url.rstrip('/')}/api/v1/organizations/{report.org_id}/queries/verify_proof"
+    steps = [
+        (result.claim.text, name, step.sql, step.proof)
+        for result in report.claims
+        for name, step in result.steps.items()
+        if step.sql is not None
+    ]
+    # Each distinct proof is sent once, all of them together: steps often share a query
+    proofs = list(dict.fromkeys(proof for *_, proof in steps if proof is not None))
     async with httpx.AsyncClient(timeout=120) as client:
-        for result in report.claims:
-            for name, step in result.steps.items():
-                if step.sql is None:
-                    continue
-                if step.proof is None:
-                    problems.append(f"{result.claim.text!r} step {name}: no proof")
-                    continue
-                verified = await _verify_proof(client, url, step.proof)
-                if verified is None or verified["proof"]["status"] != "Completed":
-                    problems.append(f"{result.claim.text!r} step {name}: the proof does not verify")
-                elif verified["sql_query"] != step.sql:
-                    problems.append(f"{result.claim.text!r} step {name}: the proof is for another query")
-                else:
-                    proven[step.sql] = _cells(verified["result"])
+        replies = await asyncio.gather(*(_verify_proof(client, url, proof) for proof in proofs))
+    verified = dict(zip(proofs, replies, strict=True))
+    for quote, name, sql, proof in steps:
+        reply = None if proof is None else verified[proof]
+        if proof is None:
+            problems.append(f"{quote!r} step {name}: no proof")
+        elif reply is None or reply["proof"]["status"] != "Completed":
+            problems.append(f"{quote!r} step {name}: the proof does not verify")
+        elif reply["sql_query"] != sql:
+            problems.append(f"{quote!r} step {name}: the proof is for another query")
+        else:
+            proven[sql] = _cells(reply["result"])
 
     async def query(statement: str) -> list[Any]:
         if statement not in proven:

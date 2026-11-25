@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import json
+import logging
 import uuid
 from collections.abc import Callable
 from decimal import Decimal
@@ -129,6 +130,19 @@ async def test_verify_is_an_error_when_no_claim_can_be_checked() -> None:
     assert [text for _, text in report.unchecked] == ["14"]
 
 
+async def test_verify_warns_when_the_run_recorded_no_call(caplog: pytest.LogCaptureFixture) -> None:
+    """Forgetting async_intercept_context gives ERROR: the log says why."""
+    with (
+        patch.object(verify_module, "_complete", AsyncMock(return_value='{"claims": []}')),
+        patch.object(verify_module, "list_all_trusted_endpoints_detailed", AsyncMock(return_value=[])),
+        patch.object(verify_module, "get_settings", return_value=MagicMock(org_id=ORG)),
+        caplog.at_level(logging.WARNING),
+    ):
+        report = await verify_module.Run().verify("It is 14°C.", model="test-model")
+    assert report.outcome == Outcome.ERROR
+    assert "verify_no_recorded_calls" in caplog.text and "async_intercept_context" in caplog.text
+
+
 async def test_verify_normalises_the_answer() -> None:
     decomposed = "Café: 14°C.\r\n"  # é as e + combining accent, Windows line end
     report = await _verify(decomposed, [_claim("14°C", "$.temperature", 14)])
@@ -243,6 +257,21 @@ async def test_a_text_filter_spelled_as_the_data_does_passes_check() -> None:
     assert report.outcome == Outcome.PASS and report.claims[0].claim.steps["n"].where["text"] == "Rome"
     with patch.object(verify_module, "_verify_proof", _public_verifier):
         assert await verify_module.check(report) == []
+
+
+async def test_check_sends_a_proof_two_steps_share_once() -> None:
+    report = await _verify(
+        "It is 14°C, so 14 degrees.", [_claim("14°C", "$.temperature", 14), _claim("14 degrees", "$.temperature", 14)]
+    )
+    sent: list[str] = []
+
+    async def verifier(client: object, url: str, proof: str) -> dict[str, Any]:
+        sent.append(proof)
+        return await _public_verifier(client, url, proof)
+
+    with patch.object(verify_module, "_verify_proof", verifier):
+        assert await verify_module.check(report) == []
+    assert len(sent) == 1 and sent[0] == report.claims[1].steps["v"].proof
 
 
 async def test_check_rejects_a_proof_the_public_verifier_refuses() -> None:
