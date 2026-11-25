@@ -60,7 +60,7 @@ Each entry has the endpoint's `url`, `label`, `policy_version` and `created_by`.
 
 #### Remove a trusted endpoint
 ```python
-await sourcerykit.trusted_endpoints.service.remove_trusted_endpoint(*, url: str) -> None
+await sourcerykit.trusted_endpoints.remove_trusted_endpoint(*, url: str) -> None
 ```
 
 ---

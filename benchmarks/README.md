@@ -80,6 +80,7 @@ uv run python benchmarks/run.py linker:anthropic_claude-haiku-5.5
 A claim may quote two statements at once: a CAUGHT counts against a good statement only when the
 claim quotes no bad one. Claims that are malformed, or quote no gold statement, are listed after
 the scores for review. Malformed includes claims the linker's guards reject: a number in the quote
-that no check or filter uses, a tolerance wider than half a unit of the stated value, or a number
-in an expression that does more than scale a unit. `UNCHECKED` lines are numbers, times and dates
+that no check or filter uses, a tolerance wider than half a unit of the stated value, a number
+in an expression that does more than scale a unit, or an array named where its elements are meant
+(`$.temps` for `$.temps[*]`). `UNCHECKED` lines are numbers, times and dates
 of the answer that no claim quotes.

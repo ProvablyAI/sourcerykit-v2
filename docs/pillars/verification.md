@@ -52,7 +52,7 @@ or, when no response backs or refutes the statement, `{"text": "...", "unsupport
 
 Code guards drop a claim, and list it in the report as dropped, when:
 
-- its text is not quoted from the answer, or it reads a call that was not recorded, or it filters on a path the data does not have;
+- its text is not quoted from the answer, or it reads a call that was not recorded, or it filters on a path the data does not have, or names an array where it means its elements (`$.temps` for `$.temps[*]`);
 - a number, date or time in the quote is not one the checks compare with: the linker cannot check 140 where the answer says €99;
 - an `approx` tolerance is wider than half a unit of the stated value, or an expression could shift the recorded value onto the stated one.
 
