@@ -1,4 +1,4 @@
-"""Simple input validators for user-provided fields."""
+"""Checks of the identifiers users give, against the length of their database columns."""
 
 
 def validate_length(field_name: str, value: str | None, max_len: int = 255, allow_none: bool = False) -> None:

@@ -6,12 +6,12 @@ from contextvars import ContextVar
 from typing import Any
 from uuid import UUID
 
+from sourcerykit._validation import validate_length
 from sourcerykit.intercept._aiohttp_hook import init_aiohttp_hooks
 from sourcerykit.intercept._httpx_hook import init_httpx_hooks
 from sourcerykit.intercept._requests_hook import init_requests_hooks
 from sourcerykit.intercept._storage import add_intercept_row
 from sourcerykit.logger import get_logger
-from sourcerykit.utils.validation import validate_length
 
 _log = get_logger(__name__)
 

@@ -2,6 +2,7 @@ import posixpath
 from typing import Any
 from urllib.parse import SplitResult, urlparse, urlsplit
 
+from sourcerykit._validation import validate_length
 from sourcerykit.config import get_settings
 from sourcerykit.db._engine import get_engine
 from sourcerykit.db._trusted_endpoints import (
@@ -13,7 +14,6 @@ from sourcerykit.db._trusted_endpoints import (
 )
 from sourcerykit.errors import SourceryKitStorageError, SourceryKitTrustError
 from sourcerykit.logger import get_logger
-from sourcerykit.utils.validation import validate_length
 
 _log = get_logger(__name__)
 

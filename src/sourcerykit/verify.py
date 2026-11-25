@@ -16,6 +16,7 @@ import unicodedata
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from enum import StrEnum
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -35,10 +36,22 @@ from sourcerykit.errors import SourceryKitBootstrapError, SourceryKitConfigError
 from sourcerykit.facts import Fact, flatten
 from sourcerykit.intercept._self_egress import provably_self_egress
 from sourcerykit.intercept.interceptor import _ctx_run_calls
-from sourcerykit.schemas.outcome import Outcome
 from sourcerykit.trusted_endpoints import endpoint_matches, list_all_trusted_endpoints_detailed
 
 _ANTHROPIC_HOST = "api.anthropic.com"
+
+
+class Outcome(StrEnum):
+    """The verdict on a whole answer, from the verdicts of its claims."""
+
+    PASS = "PASS"
+    """Every statement is checked and backed by the recorded data."""
+    PASS_WITH_NOTES = "PASS_WITH_NOTES"
+    """Nothing is contradicted, but some statements have no data to check them."""
+    CAUGHT = "CAUGHT"
+    """A statement is contradicted by the recorded data."""
+    ERROR = "ERROR"
+    """No statement could be checked: nothing was verified."""
 
 
 class StepResult(BaseModel):

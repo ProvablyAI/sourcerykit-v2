@@ -18,7 +18,7 @@ from sourcerykit.facts import Fact
 from sourcerykit.intercept import interceptor
 from sourcerykit.intercept._self_egress import is_self_egress
 from sourcerykit.intercept.interceptor import async_intercept_context
-from sourcerykit.schemas.outcome import Outcome
+from sourcerykit.verify import Outcome
 from tests.unit.test_claims import sqlite_facts
 
 CALL = uuid.uuid4()

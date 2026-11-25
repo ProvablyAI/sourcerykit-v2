@@ -8,9 +8,8 @@ from sourcerykit.errors import (
     SourceryKitTrustError,
 )
 from sourcerykit.intercept import async_intercept_context
-from sourcerykit.schemas import Outcome
 from sourcerykit.trusted_endpoints import insert_trusted_endpoint
-from sourcerykit.verify import Report, Run, check, run
+from sourcerykit.verify import Outcome, Report, Run, check, run
 
 __all__ = [
     "bootstrap_system",
