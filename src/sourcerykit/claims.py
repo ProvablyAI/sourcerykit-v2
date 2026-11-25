@@ -150,7 +150,7 @@ class Claim(BaseModel):
         return self
 
 
-async def verify(
+async def evaluate(
     claim: Claim, query: Query, table: str = "facts"
 ) -> tuple[Verdict, dict[str, tuple[str | None, list[Any]]]]:
     """The claim's verdict, and each step's SQL with its answer.

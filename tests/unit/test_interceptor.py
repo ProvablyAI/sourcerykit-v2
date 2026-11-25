@@ -17,12 +17,12 @@ from requests.adapters import HTTPAdapter
 from sourcerykit.facts import flatten
 from sourcerykit.intercept._aiohttp_hook import _make_aiohttp_wrapper
 from sourcerykit.intercept._httpx_hook import _make_async_wrapper
+from sourcerykit.intercept._requests_hook import _make_requests_wrapper
 from sourcerykit.intercept.interceptor import (
     _ctx_agent_id,
     _record,
     async_intercept_context,
 )
-from sourcerykit.intercept.requests_hook import _make_requests_wrapper
 from sourcerykit.verify import run
 
 

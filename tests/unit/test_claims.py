@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from sourcerykit.claims import Claim, Query, Step, sql, verify
+from sourcerykit.claims import Claim, Query, Step, evaluate, sql
 from sourcerykit.facts import flatten
 
 FLIGHTS = uuid.uuid4()
@@ -71,7 +71,7 @@ def query() -> Query:
 
 
 def _verdict(query: Any, claim: dict[str, Any]) -> str:
-    return asyncio.run(verify(Claim.model_validate({"text": "-", **claim}), query))[0]
+    return asyncio.run(evaluate(Claim.model_validate({"text": "-", **claim}), query))[0]
 
 
 def _step(call: uuid.UUID, select: str, where: dict[str, Any]) -> dict[str, Any]:
@@ -119,7 +119,7 @@ class TestChains:
         price = _step(FLIGHTS, "min", {"pattern": "$.flights[*].price", "obj": {"in": {"step": "ba"}}})
         claim = {"steps": {"ba": BA, "low": price}, "checks": [{"expr": "low", "op": "=", "value": 140}]}
         verdict, queries = asyncio.run(
-            verify(Claim.model_validate({"text": "The cheapest BA flight is 140", **claim}), query)
+            evaluate(Claim.model_validate({"text": "The cheapest BA flight is 140", **claim}), query)
         )
         assert verdict == "supported"
         assert queries["low"] == (
@@ -178,7 +178,7 @@ class TestChains:
                 "checks": [{"expr": "n", "op": "=", "value": 0}],
             }
         )
-        verdict, queries = asyncio.run(verify(claim, query))
+        verdict, queries = asyncio.run(evaluate(claim, query))
         assert verdict == "supported"
         assert queries["low"] == (None, [None])
         assert (
@@ -216,7 +216,7 @@ class TestAcrossCalls:
 class TestClaimShape:
     def test_unsupported_claim_runs_no_query(self) -> None:
         claim = Claim.model_validate({"text": "at £140", "unsupported": "the response has no currency"})
-        assert asyncio.run(verify(claim, lambda _: pytest.fail("no query expected"))) == ("unsupported", {})
+        assert asyncio.run(evaluate(claim, lambda _: pytest.fail("no query expected"))) == ("unsupported", {})
 
     @pytest.mark.parametrize(
         "claim",
@@ -256,7 +256,7 @@ def test_check_arithmetic_ignores_the_host_decimal_context() -> None:
     )
     query = sqlite_facts({WEATHER: {"one": 1}})
     with decimal.localcontext(decimal.Context(prec=2)):  # a host that lowered the precision
-        assert asyncio.run(verify(claim, query))[0] == "supported"
+        assert asyncio.run(evaluate(claim, query))[0] == "supported"
 
 
 @pytest.mark.parametrize(
@@ -281,7 +281,7 @@ def test_dates_and_times_compare_as_moments(stated: str, verdict: str) -> None:
             "checks": [{"expr": "t", "op": "=", "value": stated}],
         }
     )
-    assert asyncio.run(verify(claim, sqlite_facts({WEATHER: {"time": "2026-11-23T11:00Z"}})))[0] == verdict
+    assert asyncio.run(evaluate(claim, sqlite_facts({WEATHER: {"time": "2026-11-23T11:00Z"}})))[0] == verdict
 
 
 @pytest.mark.parametrize(
@@ -300,7 +300,7 @@ def test_a_time_without_a_zone_compares_by_the_clock(recorded: str, stated: str,
             "checks": [{"expr": "t", "op": "=", "value": stated}],
         }
     )
-    assert asyncio.run(verify(claim, sqlite_facts({WEATHER: {"time": recorded}})))[0] == verdict
+    assert asyncio.run(evaluate(claim, sqlite_facts({WEATHER: {"time": recorded}})))[0] == verdict
 
 
 @pytest.mark.parametrize(
@@ -323,4 +323,4 @@ def test_text_compares_ignoring_case_whitespace_and_underscores(recorded: str, s
             "checks": [{"expr": "s", "op": "=", "value": stated}],
         }
     )
-    assert asyncio.run(verify(claim, sqlite_facts({WEATHER: {"status": recorded}})))[0] == verdict
+    assert asyncio.run(evaluate(claim, sqlite_facts({WEATHER: {"status": recorded}})))[0] == verdict

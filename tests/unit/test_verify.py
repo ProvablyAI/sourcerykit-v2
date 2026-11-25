@@ -77,7 +77,7 @@ async def _verify(
 ) -> verify_module.Report:
     """Run.verify with the recorded calls and the facts table on SQLite instead of Postgres."""
 
-    async def check(found: list[Claim], rows: list[Fact]) -> list[verify_module.ClaimResult]:
+    async def seal_and_prove(found: list[Claim], rows: list[Fact]) -> list[verify_module.ClaimResult]:
         assert {fact.call_ref for fact in rows} == {CALL}  # only the evidence is sealed
         proofs: dict[str, tuple[uuid.UUID, str]] = {}
         return await verify_module._results(found, lambda statement: _prove(statement, proofs), proofs)
@@ -97,7 +97,7 @@ async def _verify(
         patch.object(
             verify_module, "list_all_trusted_endpoints_detailed", AsyncMock(return_value=[{"url": u} for u in trusted])
         ),
-        patch.object(verify_module, "_check", check),
+        patch.object(verify_module, "_seal_and_prove", seal_and_prove),
         patch.object(verify_module, "_complete", complete),
         patch.object(verify_module, "get_settings", return_value=MagicMock(org_id=ORG)),
     ):

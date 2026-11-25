@@ -5,7 +5,7 @@ import uuid
 from typing import Any
 
 from sourcerykit import linker
-from sourcerykit.claims import verify
+from sourcerykit.claims import evaluate
 from tests.unit.test_claims import sqlite_facts
 
 REF = uuid.uuid4()
@@ -17,7 +17,7 @@ async def test_prompt_example_claims_check_out_on_its_response() -> None:
     claims, errors = linker.parse(linker._EXAMPLE_ANSWER, reply, [REF])
     assert errors == []
     query = sqlite_facts({REF: linker._EXAMPLE_CALL[1]})
-    assert [(await verify(claim, query))[0] for claim in claims] == [
+    assert [(await evaluate(claim, query))[0] for claim in claims] == [
         "supported",
         "supported",
         "supported",
@@ -90,7 +90,7 @@ async def test_parse_spells_text_filters_as_the_data_does() -> None:
         {"in": ["No physical damage", "dented"]},  # no spelling of "dented" in the data: kept
     ]
     query = sqlite_facts({REF: data})
-    assert [(await verify(claim, query))[0] for claim in claims] == ["supported", "supported"]
+    assert [(await evaluate(claim, query))[0] for claim in claims] == ["supported", "supported"]
 
     # Spacing and underscores fold away too
     claims, _ = linker.parse("Items need no physical damage.", reply, [REF], texts={"No_Physical_Damage"})

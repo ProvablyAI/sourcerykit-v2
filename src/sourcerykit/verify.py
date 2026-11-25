@@ -27,7 +27,7 @@ from sqlalchemy import insert, select, text
 
 from sourcerykit import linker
 from sourcerykit.bootstrap.bootstrap import get_bootstrap
-from sourcerykit.claims import Claim, Query, Verdict, verify
+from sourcerykit.claims import Claim, Query, Verdict, evaluate
 from sourcerykit.config import DEFAULT_PROVABLY_API_URL, get_settings
 from sourcerykit.db._engine import get_engine
 from sourcerykit.db._schema import facts, intercepts
@@ -37,6 +37,8 @@ from sourcerykit.intercept._self_egress import provably_self_egress
 from sourcerykit.intercept.interceptor import _ctx_run_calls
 from sourcerykit.schemas.outcome import Outcome
 from sourcerykit.trusted_endpoints import endpoint_matches, list_all_trusted_endpoints_detailed
+
+_ANTHROPIC_HOST = "api.anthropic.com"
 
 
 class StepResult(BaseModel):
@@ -118,7 +120,7 @@ class Run:
         paths = {p for fact in rows for p in (fact.path, fact.pattern)}
         texts = {fact.text for fact in rows if fact.text is not None}
         claims, dropped = linker.parse(answer, reply, [call_id for call_id, _, _ in recorded], paths, texts)
-        results = await _check(claims, rows) if claims else []
+        results = await _seal_and_prove(claims, rows) if claims else []
         return Report(
             org_id=settings.org_id,
             outcome=_outcome([result.verdict for result in results]),
@@ -131,6 +133,17 @@ class Run:
             unchecked=linker.unchecked(answer, claims),
             untrusted=untrusted,
         )
+
+
+@asynccontextmanager
+async def run() -> AsyncIterator[Run]:
+    """Collect the API calls recorded inside the block, including those of tasks it starts."""
+    current = Run()
+    token = _ctx_run_calls.set(current.calls)
+    try:
+        yield current
+    finally:
+        _ctx_run_calls.reset(token)
 
 
 async def check(report: Report, *, api_url: str = DEFAULT_PROVABLY_API_URL) -> list[str]:
@@ -173,7 +186,7 @@ async def check(report: Report, *, api_url: str = DEFAULT_PROVABLY_API_URL) -> l
         if result.claim not in allowed:
             problems.append(f"{text}: not a claim of the model's reply that the guards accept")
         try:
-            verdict, queries = await verify(result.claim, query, table=facts.name)
+            verdict, queries = await evaluate(result.claim, query, table=facts.name)
         except _NotProven:
             continue  # its step is already reported
         verdicts.append(verdict)
@@ -186,6 +199,32 @@ async def check(report: Report, *, api_url: str = DEFAULT_PROVABLY_API_URL) -> l
     if not problems and _outcome(verdicts) != report.outcome:
         problems.append(f"the verdicts give {_outcome(verdicts)}, the report says {report.outcome}")
     return problems
+
+
+async def _load_calls(call_ids: list[UUID]) -> list[tuple[UUID, str, str]]:
+    """(id, url, raw response) of each recorded call, in the order they were recorded."""
+    if not call_ids:
+        return []
+    statement = select(intercepts.c.id, intercepts.c.source_url, intercepts.c.raw_response).where(
+        intercepts.c.id.in_(call_ids)
+    )
+    async with get_engine().connect() as conn:
+        found = {row.id: (row.id, row.source_url, row.raw_response) for row in await conn.execute(statement)}
+    return [found[call_id] for call_id in call_ids if call_id in found]
+
+
+async def _by_trust(recorded: list[tuple[UUID, str, str]]) -> tuple[list[tuple[UUID, str, str]], list[str]]:
+    """The calls that count as evidence, and the URLs of the others.
+
+    With no trusted endpoints, every recorded call counts. Once a project lists some, only calls to
+    them do, so a tool whose URL the model can steer cannot bring in data of its own choosing.
+    """
+    listed = [entry["url"] for entry in await list_all_trusted_endpoints_detailed()] if recorded else []
+    if not listed:
+        return recorded, []
+    trusted = [any(endpoint_matches(url, endpoint) for endpoint in listed) for _, url, _ in recorded]
+    evidence = [call for call, ok in zip(recorded, trusted, strict=True) if ok]
+    return evidence, [url for (_, url, _), ok in zip(recorded, trusted, strict=True) if not ok]
 
 
 async def _complete(messages: list[dict[str, str]], model: str, base_url: str, api_key: str) -> str:
@@ -210,9 +249,6 @@ async def _complete(messages: list[dict[str, str]], model: str, base_url: str, a
     return content or ""
 
 
-_ANTHROPIC_HOST = "api.anthropic.com"
-
-
 async def _complete_claude(messages: list[dict[str, str]], model: str, api_key: str) -> str:
     """The reply through the official SDK; without ``api_key`` it finds its own credentials."""
     try:
@@ -228,72 +264,7 @@ async def _complete_claude(messages: list[dict[str, str]], model: str, api_key: 
     return "".join(block.text for block in response.content if block.type == "text")
 
 
-class _NotProven(LookupError):
-    """A query a claim runs has no verified proof."""
-
-
-async def _verify_proof(client: httpx.AsyncClient, url: str, proof: str) -> dict[str, Any] | None:
-    """The public verifier's answer for ``proof``, or None if it rejects it."""
-    proof_file = ",".join(str(byte) for byte in base64.b64decode(proof))
-    with provably_self_egress():
-        response = await client.post(url, files={"proof_file": ("proof.provably", proof_file)})
-    if response.status_code >= 400:
-        return None
-    answer: dict[str, Any] = response.json()
-    return answer
-
-
-def _show(values: list[Any]) -> str:
-    return str(values[0]) if len(values) == 1 else "[" + ", ".join(map(str, values)) + "]"
-
-
-@asynccontextmanager
-async def run() -> AsyncIterator[Run]:
-    """Collect the API calls recorded inside the block, including those of tasks it starts."""
-    current = Run()
-    token = _ctx_run_calls.set(current.calls)
-    try:
-        yield current
-    finally:
-        _ctx_run_calls.reset(token)
-
-
-def _outcome(verdict_list: list[Verdict]) -> Outcome:
-    verdicts = set(verdict_list)
-    if "contradicted" in verdicts:
-        return Outcome.CAUGHT
-    if "supported" not in verdicts:
-        return Outcome.ERROR
-    return Outcome.PASS_WITH_NOTES if "unsupported" in verdicts else Outcome.PASS
-
-
-async def _by_trust(recorded: list[tuple[UUID, str, str]]) -> tuple[list[tuple[UUID, str, str]], list[str]]:
-    """The calls that count as evidence, and the URLs of the others.
-
-    With no trusted endpoints, every recorded call counts. Once a project lists some, only calls to
-    them do, so a tool whose URL the model can steer cannot bring in data of its own choosing.
-    """
-    listed = [entry["url"] for entry in await list_all_trusted_endpoints_detailed()] if recorded else []
-    if not listed:
-        return recorded, []
-    trusted = [any(endpoint_matches(url, endpoint) for endpoint in listed) for _, url, _ in recorded]
-    evidence = [call for call, ok in zip(recorded, trusted, strict=True) if ok]
-    return evidence, [url for (_, url, _), ok in zip(recorded, trusted, strict=True) if not ok]
-
-
-async def _load_calls(call_ids: list[UUID]) -> list[tuple[UUID, str, str]]:
-    """(id, url, raw response) of each recorded call, in the order they were recorded."""
-    if not call_ids:
-        return []
-    statement = select(intercepts.c.id, intercepts.c.source_url, intercepts.c.raw_response).where(
-        intercepts.c.id.in_(call_ids)
-    )
-    async with get_engine().connect() as conn:
-        found = {row.id: (row.id, row.source_url, row.raw_response) for row in await conn.execute(statement)}
-    return [found[call_id] for call_id in call_ids if call_id in found]
-
-
-async def _check(claims: list[Claim], rows: list[Fact]) -> list[ClaimResult]:
+async def _seal_and_prove(claims: list[Claim], rows: list[Fact]) -> list[ClaimResult]:
     """Seal ``rows`` in the facts table, then prove every query the claims run on it."""
     boot = get_bootstrap()
     middleware, table, collection = boot.middleware_id, boot.facts_table_id, boot.facts_collection_id
@@ -338,7 +309,7 @@ def _once(prove: Query) -> Query:
 
 async def _results(claims: list[Claim], query: Query, proofs: dict[str, tuple[UUID, str]]) -> list[ClaimResult]:
     """Claims run in parallel, the steps of each in order: a step may filter on an earlier answer."""
-    verdicts = await asyncio.gather(*(verify(claim, query, table=facts.name) for claim in claims))
+    verdicts = await asyncio.gather(*(evaluate(claim, query, table=facts.name) for claim in claims))
     results = []
     for claim, (verdict, queries) in zip(claims, verdicts, strict=True):
         steps = {}
@@ -362,3 +333,31 @@ def _cells(result: dict[str, Any]) -> list[Any]:
 def _encode(proof_file: bytes) -> str:
     """A downloaded proof, its bytes written as comma-separated numbers, as base64."""
     return base64.b64encode(bytes(int(byte) for byte in proof_file.split(b","))).decode()
+
+
+def _outcome(verdict_list: list[Verdict]) -> Outcome:
+    verdicts = set(verdict_list)
+    if "contradicted" in verdicts:
+        return Outcome.CAUGHT
+    if "supported" not in verdicts:
+        return Outcome.ERROR
+    return Outcome.PASS_WITH_NOTES if "unsupported" in verdicts else Outcome.PASS
+
+
+def _show(values: list[Any]) -> str:
+    return str(values[0]) if len(values) == 1 else "[" + ", ".join(map(str, values)) + "]"
+
+
+class _NotProven(LookupError):
+    """A query a claim runs has no verified proof."""
+
+
+async def _verify_proof(client: httpx.AsyncClient, url: str, proof: str) -> dict[str, Any] | None:
+    """The public verifier's answer for ``proof``, or None if it rejects it."""
+    proof_file = ",".join(str(byte) for byte in base64.b64decode(proof))
+    with provably_self_egress():
+        response = await client.post(url, files={"proof_file": ("proof.provably", proof_file)})
+    if response.status_code >= 400:
+        return None
+    answer: dict[str, Any] = response.json()
+    return answer

@@ -8,8 +8,8 @@ from uuid import UUID
 
 from sourcerykit.intercept._aiohttp_hook import init_aiohttp_hooks
 from sourcerykit.intercept._httpx_hook import init_httpx_hooks
+from sourcerykit.intercept._requests_hook import init_requests_hooks
 from sourcerykit.intercept._storage import add_intercept_row
-from sourcerykit.intercept.requests_hook import init_requests_hooks
 from sourcerykit.logger import get_logger
 from sourcerykit.utils.validation import validate_length
 

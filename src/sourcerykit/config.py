@@ -189,8 +189,8 @@ def get_settings() -> Settings:
             return None
 
     return Settings(
-        access_token=_url("PROVABLY_ACCESS_TOKEN", "token"),
-        refresh_token=_url("PROVABLY_REFRESH_TOKEN", "refresh_token"),
+        access_token=_resolve("PROVABLY_ACCESS_TOKEN", "token"),
+        refresh_token=_resolve("PROVABLY_REFRESH_TOKEN", "refresh_token"),
         org_id=_org_id,
         postgres_url=_local_resolve("SOURCERYKIT_POSTGRES_URL", "SOURCERYKIT_POSTGRES_URL"),
         project_name=_local_resolve("SOURCERYKIT_PROJECT_NAME", "SOURCERYKIT_PROJECT_NAME"),

@@ -25,7 +25,7 @@ from typing import Any
 import psycopg
 
 from sourcerykit import linker
-from sourcerykit.claims import Claim, verify
+from sourcerykit.claims import Claim, evaluate
 from sourcerykit.facts import Fact, flatten
 
 BENCH_DIR = Path(__file__).parent
@@ -134,7 +134,7 @@ def claimed_verdicts(cases: list[dict[str, Any]], make_claims: Claims, notes: li
                 f"  {case['id']}: {error}" if error.startswith("UNCHECKED") else f"  MALFORMED  {case['id']}: {error}"
                 for error in errors
             )
-            linked = [(_span(answer, c.text), c.text, asyncio.run(verify(c, query))[0]) for c in claims]
+            linked = [(_span(answer, c.text), c.text, asyncio.run(evaluate(c, query))[0]) for c in claims]
             statements = [(_span(answer, s["text"]), s) for s in case["claims"]]
             bad = [span for span, s in statements if s["gold_verdict"] in BAD]
             matched: set[int] = set()
