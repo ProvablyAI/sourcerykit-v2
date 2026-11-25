@@ -1,4 +1,5 @@
-"""Intercept phase: monkey-patch ``httpx``, ``aiohttp`` and ``requests`` and record responses into Postgres."""
+"""Recording: ``bootstrap_system`` patches ``httpx``, ``aiohttp`` and ``requests``, and the calls made
+inside ``async_intercept_context`` are stored in Postgres."""
 
 from sourcerykit.intercept.interceptor import (
     async_intercept_context,

@@ -38,7 +38,7 @@ async def async_intercept_context(*, agent_id: str, action_name: str) -> AsyncGe
 
 
 async def _record(url: str, method: str, request_payload: dict[str, Any], raw: str) -> None:
-    """Persist an intercepted request/response pair and cache the returned row id."""
+    """Store a call made inside ``async_intercept_context``, and add it to the current run."""
     agent_id = _ctx_agent_id.get()
     action_name = _ctx_action_name.get()
     if not agent_id or not action_name:

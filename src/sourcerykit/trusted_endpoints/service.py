@@ -19,9 +19,7 @@ _log = get_logger(__name__)
 
 
 def sanitize_and_extract_trusted_url(raw_url: str) -> str:
-    """
-    Parses a raw URL string and extracts only the scheme and netloc (domain).
-    """
+    """``raw_url`` as stored: its scheme (``https`` if none), host and path, without query or a trailing ``/``."""
     clean_url = raw_url.strip()
     if not clean_url.startswith(("http://", "https://")):
         clean_url = "https://" + clean_url
@@ -67,16 +65,12 @@ async def is_endpoint_trusted(url: str) -> bool:
 async def insert_trusted_endpoint(*, url: str, display_label: str | None = None) -> None:
     """Insert an active trusted endpoint for the configured org, ignoring conflicts."""
 
-    # Sanitize the URL string
     clean_url = sanitize_and_extract_trusted_url(url)
-
-    # Validate optional display label length against DB column size
     validate_length("display_label", display_label, max_len=255, allow_none=True)
 
     org_id = get_settings().org_id
     engine = get_engine()
 
-    # Insert statement
     stmt = db_insert_trusted_endpoint(org_id, clean_url, display_label)
 
     try:
@@ -89,16 +83,10 @@ async def insert_trusted_endpoint(*, url: str, display_label: str | None = None)
 
 
 async def list_all_trusted_endpoints_detailed() -> list[dict[str, Any]]:
-    """
-    Return all active trusted endpoints formatted with metadata and risk tracking.
-    """
+    """The organization's active trusted endpoints, newest first: url, label, policy_version, created_by."""
     org_id = get_settings().org_id
     engine = get_engine()
-
-    # Compile the SELECT statement
     stmt = select_active_trusted_endpoints(org_id)
-
-    # Execute
     try:
         async with engine.connect() as conn:
             result = await conn.execute(stmt)
@@ -115,9 +103,6 @@ async def list_all_trusted_endpoints_detailed() -> list[dict[str, Any]]:
                 "label": row.display_label or row.normalized_url,
                 "policy_version": row.policy_version or "v1",
                 "created_by": row.created_by or "system",
-                "category": "custom",
-                "risk_level": "unknown",
-                "description": f"Managed endpoint enforced under policy {row.policy_version}",
             }
         )
 
@@ -125,15 +110,12 @@ async def list_all_trusted_endpoints_detailed() -> list[dict[str, Any]]:
 
 
 async def remove_trusted_endpoint(*, url: str) -> None:
-    """Remove an active trusted endpoint for the configured org."""
-
-    # Sanitize the URL string
+    """Remove a listed trusted endpoint of the organization; the exact endpoint must be listed."""
     clean_url = sanitize_and_extract_trusted_url(url)
 
     if clean_url not in [entry["url"] for entry in await list_all_trusted_endpoints_detailed()]:
         raise SourceryKitTrustError(f"Endpoint '{clean_url}' is not trusted")
 
-    # Remove statement
     stmt = delete_trusted_endpoint(get_settings().org_id, clean_url)
     engine = get_engine()
 

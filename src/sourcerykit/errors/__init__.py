@@ -29,4 +29,4 @@ class SourceryKitStorageError(SourceryKitError):
 
 
 class SourceryKitTrustError(SourceryKitError):
-    """Raised when a request targets an endpoint not registered in the trust registry."""
+    """Raised for a trusted endpoint URL with no host, or when the endpoint to remove is not listed."""

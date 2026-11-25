@@ -61,7 +61,7 @@ def _make_async_wrapper(
 
 
 def _httpx_request_to_payload(req: httpx.Request) -> tuple[str, str, dict[str, Any]]:
-    """Extract metadata configuration payload parameters from an outbound Request."""
+    """The URL, method and request parameters (query, JSON or form body) of ``req``, as recorded."""
     kwargs: dict[str, Any] = {}
     if params := dict(req.url.params):
         kwargs["params"] = params

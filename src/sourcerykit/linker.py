@@ -3,8 +3,8 @@
 The linker is one LLM call: the answer and the recorded responses go in, and each factual
 statement of the answer comes out as a claim (see ``sourcerykit.claims``) quoting the statement
 and saying how to check it. The model only writes the checks; the verdict comes from running
-them on the recorded data. This module builds the messages and parses the reply; the caller
-makes the call with its own client.
+them on the recorded data. This module builds the messages and parses the reply; ``Run.verify``
+makes the call.
 """
 
 import ast

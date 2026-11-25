@@ -14,8 +14,7 @@ from dotenv import dotenv_values, set_key
 
 from sourcerykit.errors import SourceryKitConfigError
 
-# TODO: Replace with uuid.NIL once the repository drops support for Python < 3.14
-UUID_NIL = getattr(uuid, "NIL", uuid.UUID(int=0))
+UUID_NIL = uuid.UUID(int=0)
 
 DEFAULT_PROVABLY_API_URL = "https://api.provably.ai"
 DEFAULT_PROVABLY_APP_URL = "https://api.provably.ai"

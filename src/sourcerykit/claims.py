@@ -195,7 +195,6 @@ def sql(step: Step, answers: dict[str, list[Any]], table: str = "facts") -> str 
         if op == "in":
             if not operand:
                 return None
-            # TODO: IN is slow, tune/replace the query
             conditions.append(f"{column} IN ({_list(column, operand)})")
         elif op == "between":
             low, high = operand

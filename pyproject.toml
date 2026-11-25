@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "sourcerykit"
 version = "1.5.0"
-description = "Make every agent answer verifiable. Python SDK that checks an agent's claimed values against the API calls it actually made, with a proof anyone can verify."
+description = "Make every agent answer verifiable. Python SDK that checks every statement of an agent's answer against the API calls it actually made, with a proof anyone can verify."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.12"
 license = { text = "Business Source License 1.1" }
@@ -22,7 +22,6 @@ keywords = [
     "audit",
     "observability",
     "hallucination",
-    "handoff",
     "interceptor",
 ]
 classifiers = [
