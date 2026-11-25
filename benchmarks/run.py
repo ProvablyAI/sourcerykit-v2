@@ -106,8 +106,8 @@ def linker_claims(model: str) -> Claims:
 
     def claims(case: dict[str, Any], calls: list[tuple[uuid.UUID, list[Fact]]]) -> tuple[list[Claim], list[str]]:
         reply = json.loads((LINKS_DIR / model / f"{case['id']}.json").read_text())["reply"]
-        paths = {p for _, facts in calls for f in facts for p in (f.path, f.pattern)}
-        claims, errors = linker.parse(case["answer"], reply, [call for call, _ in calls], paths)
+        rows = [f for _, facts in calls for f in facts]
+        claims, errors = linker.parse(case["answer"], reply, [call for call, _ in calls], rows)
         skipped = [f"UNCHECKED {text!r} at {at}" for at, text in linker.unchecked(case["answer"], claims)]
         return claims, errors + skipped
 
@@ -118,9 +118,10 @@ def claimed_verdicts(cases: list[dict[str, Any]], make_claims: Claims, notes: li
     """v2 on claims an engine found in the answer: each statement gets the verdicts of the claims quoting it.
 
     A claim may quote more than one statement ("departs at 09:40 and costs €99"). A bad statement
-    is caught if any claim overlapping it is. A good one is falsely caught only by a caught claim
-    that overlaps no bad statement, which its CAUGHT would otherwise be about. Claims overlapping
-    no statement, and malformed ones, go to ``notes``.
+    is caught if any claim overlapping it is contradicted or unsupported. A good one is falsely
+    caught only by a contradicted claim that overlaps no bad statement, which its CAUGHT would
+    otherwise be about; if every claim on it is unsupported, it is abstained, as the user gets a
+    note rather than a CAUGHT. Claims overlapping no statement, and malformed ones, go to ``notes``.
     """
     with psycopg.connect(DATABASE_URL, autocommit=True) as db:
 
@@ -141,12 +142,16 @@ def claimed_verdicts(cases: list[dict[str, Any]], make_claims: Claims, notes: li
             for span, statement in statements:
                 over = [i for i, (s, _, _) in enumerate(linked) if _overlap(s, span)]
                 matched.update(over)
-                caught = [linked[i][0] for i in over if linked[i][2] != "supported"]
                 if not over:
                     yield case, statement, None
                 elif statement["gold_verdict"] in BAD:
-                    yield case, statement, "contradicted" if caught else "supported"
-                elif any(not any(_overlap(c, b) for b in bad) for c in caught):
+                    flagged = any(linked[i][2] != "supported" for i in over)
+                    yield case, statement, "contradicted" if flagged else "supported"
+                elif all(linked[i][2] == "unsupported" for i in over):
+                    yield case, statement, None
+                elif any(
+                    not any(_overlap(linked[i][0], b) for b in bad) for i in over if linked[i][2] == "contradicted"
+                ):
                     yield case, statement, "contradicted"
                 else:
                     yield case, statement, "supported"

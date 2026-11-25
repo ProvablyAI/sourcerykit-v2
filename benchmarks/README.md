@@ -73,7 +73,7 @@ frozen run as engine `linker:<model>`, offline: the claims run on the facts tabl
 statement gets the verdicts of the claims quoting it.
 
 ```bash
-MODEL_URL=... MODEL_API_KEY=... uv run python benchmarks/link.py anthropic/claude-haiku-5.5
+SOURCERYKIT_LINKER_URL=... SOURCERYKIT_LINKER_API_KEY=... uv run python benchmarks/link.py anthropic/claude-haiku-5.5
 uv run python benchmarks/run.py linker:anthropic_claude-haiku-5.5
 ```
 
