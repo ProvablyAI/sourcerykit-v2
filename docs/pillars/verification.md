@@ -47,7 +47,7 @@ or, when no response backs or refutes the statement, `{"text": "...", "unsupport
 
 - A **step** is one query on the facts of one or more calls: a column (`text`, `num`, `obj`, `idx`) or an aggregate (`count`, `min`, `max`, `sum`, `avg`), with filters on the columns below.
 - A **check** compares what the steps returned with what the answer states: `=`, `!=`, `<`, `<=`, `>`, `>=`, `between`, or `approx` with a tolerance. An expression may combine steps with `+ - * /`, so "Paris is 1.1 °C warmer" is checked from the two proven temperatures.
-- Text compares ignoring case, spacing and underscores ("On time" is `ON_TIME`), and dates and times compare as moments ("14:30 UTC" is `14:30:00Z`).
+- Text compares ignoring case, spacing and underscores ("On time" is `ON_TIME`), and dates and times compare as moments ("14:30 UTC" is `14:30:00Z`). A date or a time stated alone is checked against that part of a full timestamp ("at 09:30" holds for `2026-11-26T09:30`).
 - A statement that names the data's value in other words ("United States" for `US`) is not verifiable rather than contradicted; one that states a different value ("Delayed" where the data says `ON_TIME`) is checked.
 
 Code guards drop a claim, and list it in the report as dropped, when:

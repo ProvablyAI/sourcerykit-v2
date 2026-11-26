@@ -265,7 +265,11 @@ def test_check_arithmetic_ignores_the_host_decimal_context() -> None:
         ("2026-11-23 11:00", "supported"),  # the same moment, written with a space
         ("2026-11-23T11:00:00", "supported"),
         ("2026-11-23 12:00", "contradicted"),
-        ("11:00", "contradicted"),  # a time is not a date and time
+        ("2026-11-23 at 11:00 GMT", "supported"),  # date and time joined by a word
+        ("11:00", "supported"),  # a time stated alone is about the time of day
+        ("12:00", "contradicted"),
+        ("2026-11-23", "supported"),  # a date stated alone is about the day
+        ("2026-11-24", "contradicted"),
         ("2026-11-23 11:00 UTC", "supported"),  # the zone written as a word
         ("2026-11-23 11:00 GMT", "supported"),
         ("2026-11-23T11:00:00+00:00", "supported"),

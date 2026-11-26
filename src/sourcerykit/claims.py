@@ -20,7 +20,7 @@ import ast
 import operator
 import re
 from collections.abc import Awaitable, Callable
-from datetime import datetime, time
+from datetime import date, datetime, time
 from decimal import ROUND_HALF_EVEN, Context, Decimal, DivisionByZero, InvalidOperation, Overflow, localcontext
 from typing import Any, Literal
 from uuid import UUID
@@ -335,24 +335,37 @@ def _same_text(got: Any, want: Any) -> bool:
         return False
     if folded(got) == folded(want):
         return True
-    moments = (_moment(got), _moment(want))
-    if moments[0] is None or moments[1] is None or type(moments[0]) is not type(moments[1]):
+    a, b = _moment(got), _moment(want)
+    if a is None or b is None:
         return False
-    if (moments[0].tzinfo is None) != (moments[1].tzinfo is None):
+    # A date or a time stated alone is about that part of a full timestamp: "at 09:30" and "on
+    # 2026-11-26" both hold for 2026-11-26T09:30
+    if type(a) is datetime and type(b) is not datetime:
+        a = a.date() if type(b) is date else a.timetz()
+    elif type(b) is datetime and type(a) is not datetime:
+        b = b.date() if type(a) is date else b.timetz()
+    if type(a) is not type(b):
+        return False
+    if type(a) is date:
+        return a == b
+    assert isinstance(a, (datetime, time)) and isinstance(b, (datetime, time))
+    if (a.tzinfo is None) != (b.tzinfo is None):
         # One side gives no zone, as answers often do: the clock reading is what it states
-        return moments[0].replace(tzinfo=None) == moments[1].replace(tzinfo=None)
-    return moments[0] == moments[1]
+        return a.replace(tzinfo=None) == b.replace(tzinfo=None)
+    return a == b
 
 
 _UTC_WORDS = (" UTC", " GMT")
 
 
-def _moment(text: str) -> datetime | time | None:
-    """The date and time ``text`` writes in ISO form; a trailing "Z", " UTC" or " GMT" is +00:00."""
+def _moment(text: str) -> datetime | date | time | None:
+    """The date, time, or both that ``text`` writes in ISO form, joined by a space, "T" or " at "
+    ("2026-11-26 at 09:30"); a trailing "Z", " UTC" or " GMT" is +00:00."""
     for word in _UTC_WORDS:
         if text.endswith(word):
             text = text.removesuffix(word) + "+00:00"
-    for parse in (datetime.fromisoformat, time.fromisoformat):
+    text = text.replace(" at ", " ")
+    for parse in (date.fromisoformat, datetime.fromisoformat, time.fromisoformat):
         try:
             return parse(text)
         except ValueError:
